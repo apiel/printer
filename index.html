@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bytecintia Printer</title>
+  <style>
+    :root { color-scheme: light dark; --gap: 16px; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: var(--gap); max-width: 640px; margin-inline: auto; }
+    h1 { font-size: 1.4rem; margin: 0 0 var(--gap); }
+    section { border: 1px solid #8884; border-radius: 10px; padding: var(--gap); margin-bottom: var(--gap); }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+    button { padding: 10px 14px; border-radius: 8px; border: 1px solid #8886; background: #2563eb; color: #fff; font-size: 1rem; cursor: pointer; }
+    button.secondary { background: transparent; color: inherit; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    textarea { width: 100%; min-height: 90px; box-sizing: border-box; font: inherit; padding: 8px; border-radius: 8px; border: 1px solid #8886; }
+    select, input[type=file] { font: inherit; }
+    #status { font-weight: 600; }
+    #log { font-family: ui-monospace, monospace; font-size: .8rem; white-space: pre-wrap; background: #8881; border-radius: 8px; padding: 8px; min-height: 120px; max-height: 260px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>Bytecintia Printer</h1>
+
+  <section>
+    <div class="row">
+      <button id="connect">Connect</button>
+      <span id="status">Not connected</span>
+    </div>
+    <p style="font-size:.85rem;opacity:.75;margin:4px 0 0">
+      Turn on the printer first, then press Connect and pick it from the list.
+    </p>
+  </section>
+
+  <section>
+    <h2 style="font-size:1.1rem;margin-top:0">Text</h2>
+    <textarea id="message" placeholder="Type something to print (plain ASCII works best)"></textarea>
+    <div class="row">
+      <label>Align
+        <select id="align">
+          <option value="0">Left</option>
+          <option value="1">Center</option>
+          <option value="2">Right</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="bold"> Bold</label>
+      <label><input type="checkbox" id="cut"> Cut after print</label>
+    </div>
+    <div class="row">
+      <button data-needs-printer id="print-text" disabled>Print text</button>
+      <button data-needs-printer id="print-test" class="secondary" disabled>Print test page</button>
+      <button data-needs-printer id="print-raster" class="secondary" disabled>Print raster test</button>
+    </div>
+  </section>
+
+  <section>
+    <h2 style="font-size:1.1rem;margin-top:0">Image</h2>
+    <div class="row">
+      <input type="file" id="image" accept="image/*">
+    </div>
+    <div class="row">
+      <button data-needs-printer id="print-image" disabled>Print image</button>
+    </div>
+  </section>
+
+  <section>
+    <h2 style="font-size:1.1rem;margin-top:0">Paper and margins</h2>
+    <div class="row">
+      <label>Paper
+        <select id="paper">
+          <option value="384">58 mm (384 px)</option>
+          <option value="576">80 mm (576 px)</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <label>Left margin <input type="number" id="margin-left" min="0" max="200" step="1" style="width:5em"> px</label>
+      <label>Right margin <input type="number" id="margin-right" min="0" max="200" step="1" style="width:5em"> px</label>
+    </div>
+    <p style="font-size:.85rem;opacity:.75;margin:4px 0 0">
+      Adjust the margins until text lines up with the paper edge. Saved in this browser.
+    </p>
+  </section>
+
+  <section>
+    <div class="row" style="justify-content:space-between">
+      <strong>Log</strong>
+      <button id="clear-log" class="secondary">Clear</button>
+    </div>
+    <div id="log"></div>
+  </section>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
