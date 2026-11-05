@@ -26,8 +26,8 @@ npm run build    # static site in dist/
   the selected item. Esc deselects.
 - **Toolbox** (the strip under the toolbar). It shows the tools for what is selected, and is always
   the same height, so the page never jumps:
-  - **Nothing selected: the page.** Pick a page size, rename it, copy it, delete it, and edit its
-    width, length (or Roll), margins and padding. Changes apply straight away and are saved.
+  - **Nothing selected: the page.** Width, Roll, length and the left and right margins. The page size
+    itself is picked in the top bar. Changes apply straight away and are saved.
   - **A text box:** font, size, bold, italic, underline, strikethrough, alignment, lists, undo/redo.
     Pressing a control with the box only selected formats all of its text.
   - **An image or PDF page:** width and height in mm (the lock keeps the proportions), turn left or
@@ -36,7 +36,8 @@ npm run build    # static site in dist/
 - **Image**: drag to move, drag any corner to resize (the opposite corner stays put). Images are
   dithered to black and white at the size and orientation they are shown. Images can also be pasted or dropped.
 - **PDF**: each page becomes an image: stacked on a roll, one per page on a fixed size.
-- **Menu** (top left): printer status, cut after page, reset page sizes, and the log.
+- **Menu** (top left): printer status, cut after page, the rest of the page size settings (name, save as
+  new, delete, top and bottom margins, padding, fit roll to its content, reset to the defaults), and the log.
 - The document and the page sizes are saved automatically in this browser (local storage).
 
 ### Page sizes

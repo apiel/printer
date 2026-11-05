@@ -97,7 +97,6 @@ select, input[type="number"], input[type="text"] {
 .tools select { height: 34px; }
 #font { min-width: 140px; }
 #size { width: 4.6em; }
-#pg-preset { max-width: 170px; }
 .name { width: 130px; height: 34px; }
 
 .mini {
@@ -293,3 +292,15 @@ select, input[type="number"], input[type="text"] {
   border-radius: 8px;
   box-shadow: 0 4px 16px #0005;
 }
+
+/* ---- page settings in the menu ---- */
+.field input[type="text"], .field input[type="number"], .field select { width: 100%; }
+.card button span[data-icon] { display: inline-flex; }
+.card button svg { width: 16px; height: 16px; }
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.quad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.quad label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--muted); }
+.quad input, .duo input { padding: 4px 2px; text-align: center; appearance: textfield; -moz-appearance: textfield; }
+.quad input::-webkit-inner-spin-button, .quad input::-webkit-outer-spin-button,
+.duo input::-webkit-inner-spin-button, .duo input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+#pg-preset { max-width: 150px; height: 34px; }
