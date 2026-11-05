@@ -110,21 +110,32 @@ const rich = createRichText({
 // anything moved out of bounds). A size set by hand (typing a length, dragging a roll's end)
 // applies once: the next change hands control back to this. A roll goes back to automatic length;
 // a fixed size gets a new length, saved with the page size.
-function fitPageToContent() {
+let presetDirty = false; // the length changed while dragging and is not saved yet
+
+// live = true while an item is being dragged: the page follows at once, and the page size is
+// saved when the drag ends.
+function fitPageToContent(live = false) {
   if (state.importing) return; // a PDF import lays its pages out itself
   const bottom = pages.contentBottom();
-  if (!bottom) return; // nothing on the page: leave it alone
-  const p = preset();
-  if (p.lengthMm) {
-    const mm = Math.max(1, Math.ceil(dotsToMm(bottom) * 2) / 2);
-    // With several pages the length is shared, so never shorten it: only make it longer for
-    // content that does not fit.
-    if (mm === p.lengthMm || (pages.count() > 1 && mm < p.lengthMm)) return;
-    p.lengthMm = mm;
+  if (bottom) {
+    const p = preset();
+    if (p.lengthMm) {
+      const mm = Math.max(1, Math.ceil(dotsToMm(bottom) * 2) / 2);
+      // With several pages the length is shared, so never shorten it: only make it longer for
+      // content that does not fit.
+      const keep = mm === p.lengthMm || (pages.count() > 1 && mm < p.lengthMm);
+      if (!keep) {
+        p.lengthMm = mm;
+        fillPresetForm(p);
+        presetDirty = true;
+      }
+    } else {
+      state.roll = { length: 0, crop: false };
+    }
+  }
+  if (!live && presetDirty) {
     persistPresets();
-    fillPresetForm(p);
-  } else {
-    state.roll = { length: 0, crop: false };
+    presetDirty = false;
   }
 }
 

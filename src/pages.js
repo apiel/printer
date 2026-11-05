@@ -342,6 +342,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
         item.x = clamp(Math.round(x0 + p.x - p0.x), 0, Math.max(0, pageWidthDots(getPreset()) - el.offsetWidth));
         item.y = Math.max(0, Math.round(y0 + p.y - p0.y));
         applyItem(item);
+        onFit(true); // the page follows the item while it is being dragged
         layout();
       },
       end() {
@@ -383,6 +384,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
           item.w = clamp(Math.round(p.x - item.x), 40, Math.max(40, width - item.x));
           item.h = Math.max(0, Math.round(p.y - item.y));
           applyItem(item);
+          onFit(true);
           layout();
         },
         end() {
@@ -415,7 +417,8 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
         el.style.top = `${item.y}px`;
         el.style.width = `${bw0 * k}px`;
         el.style.height = `${bh0 * k}px`;
-        placeSelection();
+        onFit(true);
+        layout(); // also places the selection box
       },
       async end() {
         await scaleImage(item, k);
