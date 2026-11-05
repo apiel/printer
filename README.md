@@ -20,8 +20,12 @@ npm run build    # static site in dist/
 ## Using it
 
 - **Page** menu: pick a page size (rolls grow with content, fixed pages have a set length).
-  Sizes and margins are edited in the **Page sizes** panel and saved in the browser.
+  Sizes are edited in the **Page sizes** panel and saved in the browser.
+  The width and length are the paper size. **Margins** are the edge the printer cannot reach:
+  they are not part of the page and are not printed (a 58 mm roll with 5 mm margins gives a
+  48 mm page). **Padding** is free space kept inside the page when adding items (a faint guide).
 - Toolbar: add text, add an image, draw a line (drag on the page), import a PDF.
+- Text is edited directly on the page: double-click a text block (or select it and press Enter). A format bar appears with size, bold, alignment and bullet or numbered lists. Formatting applies per paragraph; Esc or Done finishes.
 - Click an item to move it, drag its corner to resize, and edit it in the side panel.
 - Rolls: drag the bar under the page to set the minimum length.
 - Fixed pages: use **+ Page** to add more.

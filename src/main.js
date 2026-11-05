@@ -1,10 +1,11 @@
 import { connect, disconnect, send, onLog, onChange, isConnected, printerName } from "./ble.js";
 import { init, feed, cut, concat, rasterCommand } from "./escpos.js";
-import { DOTS_PER_MM, ROLL_MIN_MM, mmToDots, dotsToMm, newId } from "./units.js";
+import { mmToDots, dotsToMm, newId, TEXT_DEFAULT } from "./units.js";
+import { createTextEditor } from "./editor.js";
 import { loadPresets, savePresets, DEFAULT_PRESETS } from "./presets.js";
 import { newDocument, newPage, loadDocument, saveDocument } from "./doc.js";
 import {
-  TEXT_DEFAULT, renderPage, pageHeightDots, pageWidthDots, contentWidthDots,
+  renderPage, pageHeightDots, pageWidthDots, contentWidthDots, printableWidthMm, printableLengthMm,
   itemHeight, itemBox, toBlackWhite, toPrintBitmap, canvasToDataUrl, imageFileToDataUrl,
 } from "./render.js";
 import { readPdfPages } from "./pdf.js";
@@ -17,6 +18,7 @@ const state = {
   doc: null,
   pageIndex: 0,
   selected: null, // id of the selected item on the current page
+  editing: null, // id of the text item being edited in place
   tool: "select", // "select" | "line"
   zoom: 1,
   drag: null,
@@ -80,7 +82,7 @@ function scheduleRender() {
 async function render() {
   const seq = ++state.renderSeq;
   const p = preset();
-  const gray = await renderPage(state.doc, p, state.pageIndex);
+  const gray = await renderPage(state.doc, p, state.pageIndex, state.editing);
   if (seq !== state.renderSeq) return; // a newer render is already on its way
   const bw = toBlackWhite(gray, false);
   const view = $("page-canvas");
@@ -88,6 +90,8 @@ async function render() {
   view.height = bw.height;
   view.getContext("2d").drawImage(bw, 0, 0);
   layoutSheet(bw.width, bw.height, p);
+  const editedItem = state.editing && findItem(state.editing);
+  if (editedItem) editor.position(editedItem, state.zoom);
   updateSelection();
   updatePageInfo();
 }
@@ -99,17 +103,18 @@ function layoutSheet(width, height, p) {
   sheet.style.width = `${width * z}px`;
   sheet.style.height = `${height * z}px`;
 
-  const guide = $("margin-guide").style;
-  guide.left = `${mmToDots(p.margins.left) * z}px`;
-  guide.right = `${mmToDots(p.margins.right) * z}px`;
-  guide.top = `${mmToDots(p.margins.top) * z}px`;
-  guide.bottom = `${mmToDots(p.margins.bottom) * z}px`;
+  // Faint guide for the padding. Margins are not drawn: they are not part of the page.
+  const guide = $("padding-guide").style;
+  guide.left = `${mmToDots(p.padding.left) * z}px`;
+  guide.right = `${mmToDots(p.padding.right) * z}px`;
+  guide.top = `${mmToDots(p.padding.top) * z}px`;
+  guide.bottom = `${mmToDots(p.padding.bottom) * z}px`;
 }
 
 function updateSelection() {
   const sel = $("sel");
   const item = selectedItem();
-  if (!item) {
+  if (!item || state.editing) {
     sel.classList.add("hidden");
     return;
   }
@@ -130,17 +135,28 @@ function updatePageInfo() {
   const count = state.doc.pages.length;
   $("page-nav").classList.toggle("hidden", roll);
   $("len-handle").classList.toggle("hidden", !roll);
+  $("fit-length").classList.toggle("hidden", !roll);
   $("page-label").textContent = `Page ${state.pageIndex + 1} / ${count}`;
   $("prev-page").disabled = state.pageIndex === 0;
   $("next-page").disabled = state.pageIndex >= count - 1;
   $("remove-page").disabled = count <= 1;
+  const printable = `${printableWidthMm(p)} mm wide` + (roll ? "" : ` × ${printableLengthMm(p)} mm`);
   $("page-info").textContent = roll
-    ? `Current: ${p.name}, endless roll (grows with content, minimum ${mm(page().minLength)} mm).`
-    : `Current: ${p.name}, fixed ${p.widthMm} × ${p.lengthMm} mm.`;
+    ? `Current: ${p.name}. Printable area ${printable}, endless (grows with content, minimum ${mm(page().minLength)} mm).`
+    : `Current: ${p.name}. Printable area ${printable} (paper ${p.widthMm} × ${p.lengthMm} mm).`;
+}
+
+// Saving is debounced (typing would otherwise save on every key) and flushed on exit.
+let saveTimer = null;
+
+function saveNow() {
+  clearTimeout(saveTimer);
+  if (!saveDocument(state.doc)) log("Could not save the document: browser storage is full.");
 }
 
 function commit() {
-  if (!saveDocument(state.doc)) log("Could not save the document: browser storage is full.");
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveNow, 300);
   scheduleRender();
   updateSelection();
 }
@@ -162,10 +178,6 @@ function renderPanel() {
   $("p-w").value = mm(item.w);
   $("p-h").value = mm(item.h ?? 0);
   $("p-thick").value = item.thickness ?? 3;
-  $("p-text").value = item.text ?? "";
-  $("p-size").value = item.size ?? TEXT_DEFAULT;
-  $("p-bold").checked = !!item.bold;
-  $("p-align").value = item.align ?? 0;
 }
 
 function setWidth(item, w) {
@@ -186,33 +198,13 @@ function bindInspector() {
   onNumber("p-w", (it, v) => setWidth(it, clamp(mmToDots(v), 8, pageWidthDots(preset()))));
   onNumber("p-h", (it, v) => { if (it.type === "image") it.h = clamp(mmToDots(v), 8, 8000); });
   onNumber("p-thick", (it, v) => { it.thickness = clamp(Math.round(v), 1, 60); });
-  onNumber("p-size", (it, v) => { it.size = clamp(Math.round(v), 8, 200); });
-
-  $("p-text").addEventListener("input", (e) => {
-    const item = selectedItem();
-    if (!item) return;
-    item.text = e.target.value;
-    commit();
-  });
-  $("p-bold").addEventListener("change", (e) => {
-    const item = selectedItem();
-    if (!item) return;
-    item.bold = e.target.checked;
-    commit();
-  });
-  $("p-align").addEventListener("change", (e) => {
-    const item = selectedItem();
-    if (!item) return;
-    item.align = Number(e.target.value);
-    commit();
-  });
   $("p-delete").addEventListener("click", deleteSelected);
 }
 
 // ---- adding and removing content ------------------------------------------
 
 function nextFreeY() {
-  let y = mmToDots(preset().margins.top);
+  let y = mmToDots(preset().padding.top);
   for (const it of page().items) y = Math.max(y, it.y + itemHeight(it) + 4);
   return y;
 }
@@ -229,15 +221,48 @@ function addText() {
   const p = preset();
   addItem({
     type: "text",
-    x: mmToDots(p.margins.left),
+    x: mmToDots(p.padding.left),
     y: nextFreeY(),
     w: contentWidthDots(p),
-    text: "Text",
-    size: TEXT_DEFAULT,
-    bold: false,
-    align: 0,
+    blocks: [{ text: "", size: TEXT_DEFAULT, bold: false, align: 0, list: null }],
   });
+  startEdit(state.selected); // type right away, directly on the page
 }
+
+// ---- editing text in place ----
+
+const editor = createTextEditor({
+  onChange(blocks) {
+    const item = state.editing && findItem(state.editing);
+    if (!item) return;
+    item.blocks = blocks;
+    commit();
+  },
+  onStop(item, blocks) {
+    state.editing = null;
+    item.blocks = blocks;
+    // Text that was emptied (or never typed) is removed.
+    if (blocks.every((b) => !b.text.trim())) {
+      page().items = page().items.filter((i) => i.id !== item.id);
+      if (state.selected === item.id) state.selected = null;
+    }
+    saveNow();
+    renderPanel();
+    scheduleRender();
+  },
+});
+
+function startEdit(id) {
+  const item = findItem(id);
+  if (!item || item.type !== "text") return;
+  state.selected = id;
+  state.editing = id;
+  editor.start(item, state.zoom);
+  renderPanel();
+  scheduleRender(); // hides the item on the canvas while the editor shows it
+}
+
+const stopEdit = () => editor.stop();
 
 async function onImageChosen(file) {
   const p = preset();
@@ -246,7 +271,7 @@ async function onImageChosen(file) {
   const w = Math.min(maxW, img.width);
   addItem({
     type: "image",
-    x: mmToDots(p.margins.left),
+    x: mmToDots(p.padding.left),
     y: nextFreeY(),
     w,
     h: Math.round((img.height * w) / img.width),
@@ -260,7 +285,7 @@ async function onPdfChosen(file) {
   const p = preset();
   const canvases = await readPdfPages(file, contentWidthDots(p));
   log(`PDF: ${canvases.length} page(s).`);
-  const left = mmToDots(p.margins.left);
+  const left = mmToDots(p.padding.left);
   const roll = !p.lengthMm;
 
   canvases.forEach((canvas, i) => {
@@ -280,11 +305,11 @@ async function onPdfChosen(file) {
         state.doc.pages.push(newPage());
         state.pageIndex = state.doc.pages.length - 1;
       }
-      const available = pageHeightDots(p, page()) - mmToDots(p.margins.top) - mmToDots(p.margins.bottom);
+      const available = pageHeightDots(p, page()) - mmToDots(p.padding.top) - mmToDots(p.padding.bottom);
       const scale = Math.min(1, available / canvas.height);
       item.w = Math.round(canvas.width * scale);
       item.h = Math.round(canvas.height * scale);
-      item.y = mmToDots(p.margins.top);
+      item.y = mmToDots(p.padding.top);
     }
     page().items.push(item);
   });
@@ -303,6 +328,7 @@ function deleteSelected() {
 }
 
 function gotoPage(index) {
+  stopEdit();
   state.pageIndex = clamp(index, 0, state.doc.pages.length - 1);
   state.selected = null;
   renderPanel();
@@ -346,7 +372,8 @@ function bindSheet() {
   const sheet = $("sheet");
 
   sheet.addEventListener("pointerdown", (e) => {
-    if (e.target.closest(".handle, .len-handle")) return;
+    if (e.target.closest(".handle, .len-handle, #text-editor")) return;
+    if (state.editing) stopEdit();
     const p = dotsFromEvent(e);
     if (state.tool === "line") {
       const item = { id: newId(), type: "line", x: Math.round(p.x), y: Math.round(p.y), w: 1, thickness: 3 };
@@ -368,7 +395,8 @@ function bindSheet() {
     const p = dotsFromEvent(e);
     const W = pageWidthDots(preset());
     if (d.kind === "length") {
-      page().minLength = Math.max(mmToDots(ROLL_MIN_MM), d.startMin + Math.round((e.clientY - d.startY) / state.zoom));
+      // No lower bound: the roll never gets shorter than its content plus bottom margin.
+      page().minLength = Math.max(0, d.startMin + Math.round((e.clientY - d.startY) / state.zoom));
     } else {
       const item = d.kind === "resize" ? selectedItem() : findItem(d.id);
       if (!item) return;
@@ -397,6 +425,13 @@ function bindSheet() {
   sheet.addEventListener("pointerup", endDrag);
   sheet.addEventListener("pointercancel", endDrag);
 
+  // Double-click a text item to edit it in place.
+  sheet.addEventListener("dblclick", (e) => {
+    if (e.target.closest("#text-editor")) return;
+    const hit = hitTest(dotsFromEvent(e));
+    if (hit?.type === "text") startEdit(hit.id);
+  });
+
   $("handle-se").addEventListener("pointerdown", (e) => {
     e.stopPropagation();
     e.preventDefault();
@@ -407,14 +442,18 @@ function bindSheet() {
   $("len-handle").addEventListener("pointerdown", (e) => {
     e.stopPropagation();
     e.preventDefault();
-    state.drag = { kind: "length", startY: e.clientY, startMin: page().minLength };
+    // Start from the length shown on screen, so dragging up shrinks it right away.
+    state.drag = { kind: "length", startY: e.clientY, startMin: $("page-canvas").height };
     $("len-handle").setPointerCapture(e.pointerId);
   });
 
   document.addEventListener("keydown", (e) => {
-    if (e.target.matches("input, textarea, select")) return;
+    if (e.target.closest("input, textarea, select, [contenteditable]")) return;
     if (e.key === "Delete" || e.key === "Backspace") {
       deleteSelected();
+      e.preventDefault();
+    } else if (e.key === "Enter" && selectedItem()?.type === "text") {
+      startEdit(state.selected);
       e.preventDefault();
     } else if (e.key === "Escape") {
       state.selected = null;
@@ -441,20 +480,34 @@ function fillPresetForm(p) {
   $("pr-width").value = p.widthMm;
   $("pr-roll").checked = !p.lengthMm;
   $("pr-length").value = p.lengthMm ?? 297;
-  $("pr-length").disabled = !p.lengthMm;
   $("pr-ml").value = p.margins.left;
   $("pr-mr").value = p.margins.right;
   $("pr-mt").value = p.margins.top;
   $("pr-mb").value = p.margins.bottom;
+  $("pr-pl").value = p.padding.left;
+  $("pr-pr").value = p.padding.right;
+  $("pr-pt").value = p.padding.top;
+  $("pr-pb").value = p.padding.bottom;
+  syncRollFields();
+}
+
+// A roll has no top or bottom edge, so those margins do not apply.
+function syncRollFields() {
+  const roll = $("pr-roll").checked;
+  $("pr-length").disabled = roll;
+  $("pr-mt").disabled = roll;
+  $("pr-mb").disabled = roll;
 }
 
 function readPresetForm() {
   const num = (id) => Math.max(0, Number($(id).value) || 0);
+  const roll = $("pr-roll").checked;
   return {
     name: $("pr-name").value.trim() || "Untitled",
     widthMm: Math.max(10, num("pr-width")),
-    lengthMm: $("pr-roll").checked ? null : Math.max(10, num("pr-length")),
-    margins: { left: num("pr-ml"), right: num("pr-mr"), top: num("pr-mt"), bottom: num("pr-mb") },
+    lengthMm: roll ? null : Math.max(10, num("pr-length")),
+    margins: { left: num("pr-ml"), right: num("pr-mr"), top: roll ? 0 : num("pr-mt"), bottom: roll ? 0 : num("pr-mb") },
+    padding: { left: num("pr-pl"), right: num("pr-pr"), top: num("pr-pt"), bottom: num("pr-pb") },
   };
 }
 
@@ -481,7 +534,7 @@ function applyPreset(id) {
 
 function bindPresets() {
   $("preset").addEventListener("change", (e) => applyPreset(e.target.value));
-  $("pr-roll").addEventListener("change", (e) => ($("pr-length").disabled = e.target.checked));
+  $("pr-roll").addEventListener("change", syncRollFields);
 
   $("pr-new").addEventListener("click", () => {
     const p = { id: newId(), ...readPresetForm() };
@@ -505,7 +558,8 @@ function bindPresets() {
     applyPreset(state.presets[0].id);
   });
   $("pr-a4").addEventListener("click", () => {
-    fillPresetForm({ name: "A4 page", widthMm: 210, lengthMm: 297, margins: { top: 10, right: 10, bottom: 10, left: 10 } });
+    const a4 = DEFAULT_PRESETS.find((p) => p.id === "a4");
+    fillPresetForm({ ...structuredClone(a4), name: "A4 page" });
   });
   $("pr-reset").addEventListener("click", () => {
     state.presets = structuredClone(DEFAULT_PRESETS);
@@ -527,7 +581,8 @@ async function printDocument() {
   const p = preset();
   const head = state.prefs.head;
   const width = pageWidthDots(p);
-  if (width !== head) log(`Page is ${width} dots wide, printer head is ${head}: scaling to ${Math.round((head / width) * 100)}%.`);
+  if (width > head) log(`Page is ${width} dots wide, printer head is ${head}: scaling to ${Math.round((head / width) * 100)}%.`);
+  else if (width < head) log(`Page is ${width} dots wide, printer head is ${head}: printing at real size, centred.`);
 
   const count = state.doc.pages.length;
   for (let i = 0; i < count; i++) {
@@ -567,6 +622,10 @@ function boot() {
   $("delete-item").addEventListener("click", deleteSelected);
   $("prev-page").addEventListener("click", () => gotoPage(state.pageIndex - 1));
   $("next-page").addEventListener("click", () => gotoPage(state.pageIndex + 1));
+  $("fit-length").addEventListener("click", () => {
+    page().minLength = 0;
+    commit();
+  });
   $("add-page").addEventListener("click", addPage);
   $("remove-page").addEventListener("click", removePage);
   document.querySelectorAll("[data-tool]").forEach((b) => b.addEventListener("click", () => setTool(b.dataset.tool)));
@@ -600,6 +659,7 @@ function boot() {
   if (!navigator.bluetooth) log("Web Bluetooth is not available in this browser or page.");
 
   window.addEventListener("resize", scheduleRender);
+  window.addEventListener("pagehide", saveNow);
   render();
 }
 

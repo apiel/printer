@@ -4,6 +4,9 @@ export const DOTS_PER_MM = 8;
 export const mmToDots = (mm) => Math.round(mm * DOTS_PER_MM);
 export const dotsToMm = (dots) => dots / DOTS_PER_MM;
 
+// Default text size, in dots (26 dots is about 3.3 mm).
+export const TEXT_DEFAULT = 26;
+
 // A roll (endless page) starts this short and grows as content is added.
 export const ROLL_MIN_MM = 14;
 
