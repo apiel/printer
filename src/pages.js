@@ -11,7 +11,7 @@ import { icon } from "./icons.js";
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSelection, onDropImages }) {
+export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSelection, onDropImages, onGrow, onResized }) {
   let model = []; // [{ items: [...] }]
   let views = []; // per page: the DOM around it
   const els = new Map(); // item id -> element
@@ -29,6 +29,17 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
 
   const contentOf = (item) => els.get(item.id)?.querySelector(".content") ?? null;
   const itemHeight = (item) => els.get(item.id)?.offsetHeight ?? 0;
+
+  /** How far down the content reaches on the longest page, plus the bottom padding (0 if empty). */
+  function contentBottom() {
+    let bottom = 0;
+    for (const pg of model) for (const it of pg.items) bottom = Math.max(bottom, it.y + itemHeight(it));
+    return bottom ? bottom + mmToDots(getPreset().padding.bottom) : 0;
+  }
+
+  // An item that does not fit on its page asks for a longer page: onGrow gets how far down
+  // (in dots, including the bottom padding) the page needs to reach.
+  const needRoom = (item) => onGrow(item.y + itemHeight(item) + mmToDots(getPreset().padding.bottom));
   const pageOf = (item) => model.findIndex((p) => p.items.includes(item));
 
   function makeEl(item) {
@@ -188,6 +199,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
     const item = { id: newId(), type: "text", x, y, w, h: 0, html: "<div><br></div>" };
     model[pageIndex].items.push(item);
     views[pageIndex].page.append(makeEl(item));
+    needRoom(item);
     layout();
     select(item, pageIndex);
     startEdit(item);
@@ -200,6 +212,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
     const item = { id: newId(), type: "image", x, y, w, h, ratio: h / w, angle, orig, src: baked.src, bw: baked.bw, bh: baked.bh };
     model[pageIndex].items.push(item);
     views[pageIndex].page.append(makeEl(item));
+    needRoom(item);
     layout();
     select(item, pageIndex);
     onChange();
@@ -221,6 +234,16 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
   function deleteSelected() {
     if (!selected) return;
     remove(selected.item);
+    onChange();
+  }
+
+  /** Remove every item and every extra page. */
+  function clearAll() {
+    stopEdit();
+    selected = null;
+    model = [{ items: [] }];
+    rebuild();
+    onSelection(null);
     onChange();
   }
 
@@ -283,6 +306,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
     if (!editing) return;
     const content = contentOf(editing);
     if (content) editing.html = content.innerHTML;
+    needRoom(editing); // typing more lines than fit makes the page longer
     layout();
   }
 
@@ -360,7 +384,10 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
           applyItem(item);
           layout();
         },
-        end: () => onChange(),
+        end() {
+          onResized();
+          onChange();
+        },
       };
       return;
     }
@@ -391,6 +418,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
       },
       async end() {
         await scaleImage(item, k);
+        onResized();
         onChange();
       },
     };
@@ -412,6 +440,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
     item.x = clamp(item.x, 0, Math.max(0, width - item.bw));
     applyItem(item);
     layout();
+    onResized();
     onChange();
   }
 
@@ -444,6 +473,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
     item.x = clamp(item.x, 0, Math.max(0, width - item.bw));
     applyItem(item);
     layout();
+    onResized();
     onChange();
   }
 
@@ -461,6 +491,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
     item.x = left;
     if (mode === "page") item.y = top;
     await scaleImage(item, k);
+    onResized();
     onChange();
   }
 
@@ -567,6 +598,8 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
     addImage,
     addPage,
     deleteSelected,
+    clearAll,
+    contentBottom,
     rotateSelected,
     setImageSize,
     fitSelected,

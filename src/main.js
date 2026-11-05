@@ -56,7 +56,7 @@ function guard(fn) {
 
 // ---- the document ---------------------------------------------------------
 
-const contentWidth = () => pageWidthDots(preset()) - mmToDots(preset().padding.left + preset().padding.right);
+const contentWidth = () => Math.max(8, pageWidthDots(preset()) - mmToDots(preset().padding.left + preset().padding.right));
 
 let saveTimer = null;
 
@@ -70,6 +70,7 @@ function saveNow() {
 function changed() {
   pages.layout();
   updateImageFields();
+  updateClearButton();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveNow, 300);
 }
@@ -82,6 +83,8 @@ const pages = createPages({
   onChange: changed,
   onSelection: (item) => updateToolbar(item),
   onDropImages: (files, pageIndex, at) => files.forEach((f) => addImageFile(f, pageIndex, at)),
+  onGrow: growPage,
+  onResized: fitPageToContent,
 });
 
 const rich = createRichText({
@@ -101,6 +104,72 @@ const rich = createRichText({
   onSelection: () => updateFormatState(),
   onImageFiles: (files) => files.forEach((f) => addImageFile(f)),
 });
+
+// An item does not fit on the page: make the page longer (grow only, never shrink). A fixed
+// size gets a longer length (saved with the page size); a cropped roll gets longer.
+function growPage(bottomDots) {
+  const p = preset();
+  if (p.lengthMm) {
+    const needed = Math.ceil(dotsToMm(bottomDots) * 2) / 2; // whole half millimetres
+    if (needed <= p.lengthMm) return;
+    p.lengthMm = needed;
+    persistPresets();
+    fillPresetForm(p);
+  } else if (state.roll.crop && bottomDots > state.roll.length) {
+    state.roll = { ...state.roll, length: bottomDots };
+  }
+}
+
+// After an item was resized, remove the empty space under the content: the page becomes as
+// long as its content needs. A roll goes back to automatic length; a fixed size gets a
+// shorter (or longer) length, saved with the page size.
+function fitPageToContent() {
+  const bottom = pages.contentBottom();
+  if (!bottom) return; // nothing on the page: leave it alone
+  const p = preset();
+  if (p.lengthMm) {
+    const mm = Math.max(1, Math.ceil(dotsToMm(bottom) * 2) / 2);
+    if (mm === p.lengthMm) return;
+    p.lengthMm = mm;
+    persistPresets();
+    fillPresetForm(p);
+  } else {
+    state.roll = { length: 0, crop: false };
+  }
+}
+
+// ---- clearing everything -------------------------------------------------
+
+// Ask a yes/no question in a dialog. Resolves true only for the confirming button.
+function confirmDialog(message, okLabel) {
+  const dialog = $("confirm");
+  $("confirm-text").textContent = message;
+  $("confirm-ok").textContent = okLabel;
+  return new Promise((resolve) => {
+    const finish = (answer) => {
+      dialog.close();
+      resolve(answer);
+    };
+    $("confirm-ok").onclick = () => finish(true);
+    $("confirm-cancel").onclick = () => finish(false);
+    dialog.oncancel = () => resolve(false); // Esc
+    dialog.showModal();
+    $("confirm-cancel").focus(); // the safe choice is the default
+  });
+}
+
+async function clearAll() {
+  if (!(await confirmDialog("Remove every text box, image and page from this document? This cannot be undone.", "Clear everything"))) return;
+  state.roll = { length: mmToDots(ROLL_MIN_MM), crop: false };
+  pages.clearAll();
+  saveNow();
+}
+
+// Clear is only offered when there is something to clear.
+function updateClearButton() {
+  const model = pages.getModel();
+  $("clear-all").disabled = !(model.length > 1 || model.some((pg) => pg.items.length));
+}
 
 // ---- adding things --------------------------------------------------------
 
@@ -236,6 +305,7 @@ function bindToolbar() {
   $("import-pdf").addEventListener("click", () => $("file-pdf").click());
   $("add-page").addEventListener("click", () => pages.addPage());
   $("delete-item").addEventListener("click", () => pages.deleteSelected());
+  $("clear-all").addEventListener("click", guard(clearAll));
 
   $("file-image").addEventListener("change", guard(async (e) => {
     const files = [...e.target.files];
@@ -472,6 +542,7 @@ function boot() {
   window.addEventListener("pagehide", saveNow);
   pages.load(model);
   updateToolbar(null);
+  updateClearButton();
 }
 
 boot();

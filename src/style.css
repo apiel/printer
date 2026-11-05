@@ -304,3 +304,15 @@ select, input[type="number"], input[type="text"] {
 .quad input::-webkit-inner-spin-button, .quad input::-webkit-outer-spin-button,
 .duo input::-webkit-inner-spin-button, .duo input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 #pg-preset { max-width: 150px; height: 34px; }
+
+/* ---- confirmation dialog ---- */
+.confirm {
+  max-width: min(92vw, 360px);
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px #0006;
+}
+.confirm::backdrop { background: #0006; }
+.confirm p { margin: 0 0 12px; }
+.confirm .row { justify-content: flex-end; margin: 0; }

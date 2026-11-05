@@ -21,6 +21,7 @@ export const ICONS = {
   numbers: svg('<path d="M10 6h10M10 12h10M10 18h10"/><text x="1" y="8" font-size="7" font-weight="700" fill="currentColor" stroke="none" font-family="system-ui,sans-serif">1</text><text x="1" y="14" font-size="7" font-weight="700" fill="currentColor" stroke="none" font-family="system-ui,sans-serif">2</text><text x="1" y="20" font-size="7" font-weight="700" fill="currentColor" stroke="none" font-family="system-ui,sans-serif">3</text>'),
   bluetooth: svg('<path d="M6.5 6.5l11 11L12 23V1l5.5 5.5-11 11"/>'),
   printer: svg('<path d="M6 9V3h12v6"/><path d="M6 18H4a1 1 0 01-1-1v-6a2 2 0 012-2h14a2 2 0 012 2v6a1 1 0 01-1 1h-2"/><path d="M6 14h12v7H6z"/>'),
+  clearAll: svg('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/>'),
   copy: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/>'),
   lock: svg('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>'),
   unlock: svg('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 017.5-1.5"/>'),

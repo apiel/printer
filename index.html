@@ -18,6 +18,7 @@
       <button id="add-page" class="icon hidden" data-icon="pagePlus" title="Add a page" aria-label="Add a page"></button>
       <span class="sep"></span>
       <button id="delete-item" class="icon" data-icon="trash" title="Delete the selected item" aria-label="Delete" disabled></button>
+      <button id="clear-all" class="icon" data-icon="clearAll" title="Clear everything" aria-label="Clear everything" disabled></button>
       <button id="action" class="primary push-right"></button>
     </div>
 
@@ -125,6 +126,14 @@
       <div id="log"></div>
     </div>
   </aside>
+
+  <dialog id="confirm" class="confirm">
+    <p id="confirm-text"></p>
+    <div class="row">
+      <button id="confirm-cancel">Cancel</button>
+      <button id="confirm-ok" class="danger"></button>
+    </div>
+  </dialog>
 
   <div id="toast" class="toast hidden" role="status"></div>
 
