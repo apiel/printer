@@ -10,6 +10,13 @@ in black and white. Static site, no backend.
   iPhone Safari does **not** support Web Bluetooth.
 - The page must be served over HTTPS or from `localhost`.
 
+## Install it as an app
+
+The site is a PWA. In Chrome or Edge (Android, Windows, macOS, Linux) use the install button in the address
+bar, or the browser menu → **Install app** / **Add to Home screen**. It then opens in its own window with its
+own icon, and it works offline: after the first visit everything (fonts, PDF import, printing over Bluetooth)
+is cached, and updates arrive by themselves on the next visit after a new deploy.
+
 ## Run
 
 ```sh
@@ -70,7 +77,8 @@ server. Web Bluetooth needs HTTPS, which GitHub Pages provides.
 
 ## Files
 
-- `index.html`, `src/style.css`: layout and styles. `src/icons.js`: the icons.
+- `index.html`, `src/style.css`: layout and styles. `src/icons.js`: the toolbar icons.
+- `vite.config.js`: the build, including the PWA manifest and offline cache. `public/`: the app icons.
 - `src/main.js`: the app: toolbar and toolboxes, adding items, PDF import, printing, page sizes, menu.
 - `src/pages.js`: the pages and items: layout, selection, moving, resizing, turning, editing.
 - `src/richtext.js`: formatting commands, fonts and sizes for the text box being edited.
