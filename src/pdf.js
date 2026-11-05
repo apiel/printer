@@ -1,6 +1,6 @@
 import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
-import { newCanvas } from "./render.js";
+import { newCanvas } from "./bitmap.js";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 

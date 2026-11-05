@@ -65,10 +65,6 @@ async function findWritableCharacteristic(server) {
   return candidates.find((c) => c.withoutResponse) ?? candidates[0];
 }
 
-export function disconnect() {
-  if (device?.gatt?.connected) device.gatt.disconnect();
-}
-
 export async function send(bytes) {
   if (!target) throw new Error("Not connected to a printer.");
   for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {

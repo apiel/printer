@@ -8,136 +8,113 @@
 </head>
 <body>
   <header class="toolbar">
-    <div class="group">
-      <button id="connect">Connect</button>
-      <span id="status" class="muted">Not connected</span>
+    <div class="bar">
+      <button id="menu-btn" class="icon" data-icon="menu" title="Menu" aria-label="Menu"></button>
+      <span class="sep"></span>
+      <button id="add-text" class="icon" data-icon="text" title="Add a text box" aria-label="Add a text box"></button>
+      <button id="add-image" class="icon" data-icon="image" title="Add an image" aria-label="Add an image"></button>
+      <button id="import-pdf" class="icon" data-icon="pdf" title="Import a PDF" aria-label="Import a PDF"></button>
+      <button id="add-page" class="icon hidden" data-icon="pagePlus" title="Add a page" aria-label="Add a page"></button>
+      <span class="sep"></span>
+      <button id="delete-item" class="icon" data-icon="trash" title="Delete the selected item" aria-label="Delete" disabled></button>
+      <button id="action" class="primary push-right"></button>
     </div>
 
-    <div class="group">
-      <label>Page <select id="preset"></select></label>
-    </div>
+    <!-- One toolbox at a time. All three share one grid cell, so the strip is always as tall
+         as the tallest one and nothing below it moves when the selection changes. -->
+    <div class="toolbox">
+      <div class="tools active" data-ctx="page">
+        <select id="pg-preset" title="Page size"></select>
+        <input id="pg-name" class="name" type="text" title="Name of this page size" aria-label="Name">
+        <button id="pg-new" class="icon" data-icon="copy" title="Save as a new page size" aria-label="Save as a new page size"></button>
+        <button id="pg-delete" class="icon" data-icon="trash" title="Delete this page size" aria-label="Delete this page size"></button>
+        <span class="sep"></span>
+        <label class="mini" title="Paper width">Width <input id="pg-width" type="number" min="10" step="1"> mm</label>
+        <label class="mini" title="An endless roll"><input id="pg-roll" type="checkbox"> Roll</label>
+        <label class="mini" title="Paper length">Length <input id="pg-length" type="number" min="10" step="1"> mm</label>
+        <button id="pg-fit" class="icon" data-icon="fitHeight" title="Fit the roll to its content" aria-label="Fit the roll to its content"></button>
+        <span class="sep"></span>
+        <span class="mini" title="The edge the printer cannot reach: not part of the page">Margins mm</span>
+        <label class="mini">L <input id="pg-ml" class="tiny" type="number" min="0" step="0.5"></label>
+        <label class="mini">T <input id="pg-mt" class="tiny" type="number" min="0" step="0.5"></label>
+        <label class="mini">R <input id="pg-mr" class="tiny" type="number" min="0" step="0.5"></label>
+        <label class="mini">B <input id="pg-mb" class="tiny" type="number" min="0" step="0.5"></label>
+        <span class="sep"></span>
+        <span class="mini" title="Space new items keep from the edge (the dashed line)">Padding mm</span>
+        <label class="mini">L <input id="pg-pl" class="tiny" type="number" min="0" step="0.5"></label>
+        <label class="mini">T <input id="pg-pt" class="tiny" type="number" min="0" step="0.5"></label>
+        <label class="mini">R <input id="pg-pr" class="tiny" type="number" min="0" step="0.5"></label>
+        <label class="mini">B <input id="pg-pb" class="tiny" type="number" min="0" step="0.5"></label>
+      </div>
 
-    <div class="group">
-      <button data-tool="select" class="active" title="Select and move items">Select</button>
-      <button id="add-text" title="Add a text block">+ Text</button>
-      <button id="add-image" title="Add an image">+ Image</button>
-      <button data-tool="line" title="Drag on the page to draw a line">Line</button>
-      <button id="import-pdf" title="Import a PDF">PDF…</button>
-      <button id="delete-item" title="Delete the selected item">Delete</button>
-    </div>
+      <div class="tools" data-ctx="text">
+        <select id="font" title="Font"></select>
+        <button id="size-down" class="icon" data-icon="smaller" title="Smaller text" aria-label="Smaller text"></button>
+        <select id="size" title="Text size"></select>
+        <button id="size-up" class="icon" data-icon="larger" title="Larger text" aria-label="Larger text"></button>
+        <span class="sep"></span>
+        <button class="icon" data-cmd="bold" data-icon="bold" title="Bold" aria-label="Bold"></button>
+        <button class="icon" data-cmd="italic" data-icon="italic" title="Italic" aria-label="Italic"></button>
+        <button class="icon" data-cmd="underline" data-icon="underline" title="Underline" aria-label="Underline"></button>
+        <button class="icon" data-cmd="strikeThrough" data-icon="strike" title="Strikethrough" aria-label="Strikethrough"></button>
+        <span class="sep"></span>
+        <button class="icon" data-cmd="justifyLeft" data-icon="left" title="Align left" aria-label="Align left"></button>
+        <button class="icon" data-cmd="justifyCenter" data-icon="center" title="Center" aria-label="Center"></button>
+        <button class="icon" data-cmd="justifyRight" data-icon="right" title="Align right" aria-label="Align right"></button>
+        <button class="icon" data-cmd="justifyFull" data-icon="justify" title="Justify" aria-label="Justify"></button>
+        <span class="sep"></span>
+        <button class="icon" data-cmd="insertUnorderedList" data-icon="bullets" title="Bulleted list" aria-label="Bulleted list"></button>
+        <button class="icon" data-cmd="insertOrderedList" data-icon="numbers" title="Numbered list" aria-label="Numbered list"></button>
+        <span class="sep"></span>
+        <button class="icon" data-cmd="undo" data-icon="undo" title="Undo" aria-label="Undo"></button>
+        <button class="icon" data-cmd="redo" data-icon="redo" title="Redo" aria-label="Redo"></button>
+      </div>
 
-    <div class="group" id="page-nav">
-      <button id="prev-page">◀</button>
-      <span id="page-label" class="muted">Page 1 / 1</span>
-      <button id="next-page">▶</button>
-      <button id="add-page">+ Page</button>
-      <button id="remove-page">Remove page</button>
-    </div>
-
-    <div class="group push-right">
-      <button id="print" class="primary" data-needs-printer disabled>Print</button>
-    </div>
-
-    <div id="format-bar" class="group format-bar hidden">
-      <span class="muted">Text</span>
-      <button id="fmt-smaller" title="Smaller text">A−</button>
-      <span id="fmt-size" class="size-label">26</span>
-      <button id="fmt-larger" title="Larger text">A+</button>
-      <button id="fmt-bold" title="Bold (Ctrl+B)"><b>B</b></button>
-      <button id="fmt-left" title="Align left">Left</button>
-      <button id="fmt-center" title="Center">Center</button>
-      <button id="fmt-right" title="Align right">Right</button>
-      <button id="fmt-bullet" title="Bulleted list">• List</button>
-      <button id="fmt-number" title="Numbered list">1. List</button>
-      <button id="fmt-done" class="primary" title="Finish editing (Esc)">Done</button>
+      <div class="tools" data-ctx="image">
+        <label class="mini" title="Width on the page">Width <input id="img-w" type="number" min="0.5" step="0.5"> mm</label>
+        <button id="img-lock" class="icon active" data-icon="lock" title="Keep the proportions" aria-label="Keep the proportions"></button>
+        <label class="mini" title="Height on the page">Height <input id="img-h" type="number" min="0.5" step="0.5"> mm</label>
+        <span class="sep"></span>
+        <button id="img-rot-l" class="icon" data-icon="rotateLeft" title="Turn left" aria-label="Turn left"></button>
+        <button id="img-rot-r" class="icon" data-icon="rotateRight" title="Turn right" aria-label="Turn right"></button>
+        <span class="sep"></span>
+        <button id="img-fit-w" class="icon" data-icon="fitWidth" title="Fit to the page width" aria-label="Fit to the page width"></button>
+        <button id="img-fit-p" class="icon" data-icon="fitPage" title="Fit to the whole page" aria-label="Fit to the whole page"></button>
+      </div>
     </div>
   </header>
 
-  <main class="layout">
-    <section class="stage" id="stage">
-      <div id="sheet" class="sheet">
-        <canvas id="page-canvas"></canvas>
-        <div id="padding-guide" class="padding-guide"></div>
-        <div id="sel" class="sel hidden"><div id="handle-se" class="handle" title="Drag to resize"></div></div>
-        <div id="text-editor" class="text-editor hidden" contenteditable="true" spellcheck="false"></div>
-        <div id="len-handle" class="len-handle" title="Drag to change the minimum length"></div>
-      </div>
-    </section>
+  <main id="stage" class="stage"></main>
 
-    <aside class="side">
-      <div class="card">
-        <h2>Selected item</h2>
-        <p id="no-selection" class="muted">Click an item on the page to edit it.</p>
-        <div id="fields" class="hidden">
-          <div class="field"><label for="p-x">X (mm)</label><input id="p-x" type="number" step="0.5"></div>
-          <div class="field"><label for="p-y">Y (mm)</label><input id="p-y" type="number" step="0.5"></div>
-          <div class="field" data-for="text image line"><label for="p-w">Width (mm)</label><input id="p-w" type="number" step="0.5" min="1"></div>
-          <div class="field" data-for="image"><label for="p-h">Height (mm)</label><input id="p-h" type="number" step="0.5" min="1"></div>
-          <div class="field" data-for="line"><label for="p-thick">Thickness (dots)</label><input id="p-thick" type="number" min="1" max="60"></div>
-          <p class="muted" data-for="text">Double-click the text on the page (or press Enter) to edit it.</p>
-          <button id="p-delete" class="danger">Delete item</button>
-        </div>
-      </div>
+  <div id="scrim" class="scrim hidden"></div>
+  <aside id="drawer" class="drawer" aria-label="Menu">
+    <div class="drawer-head">
+      <strong>Menu</strong>
+      <button id="drawer-close" class="icon" data-icon="close" title="Close" aria-label="Close"></button>
+    </div>
 
-      <div class="card">
-        <h2>Page sizes</h2>
-        <p id="page-info" class="muted"></p>
-        <div class="row"><button id="fit-length">Fit roll to content</button></div>
-        <div class="field"><label for="pr-name">Name</label><input id="pr-name" type="text"></div>
-        <div class="field"><label for="pr-width">Width (mm)</label><input id="pr-width" type="number" min="10" step="1"></div>
-        <div class="field"><label for="pr-roll">Endless roll</label><input id="pr-roll" type="checkbox"></div>
-        <div class="field"><label for="pr-length">Length (mm)</label><input id="pr-length" type="number" min="10" step="1"></div>
-        <div class="field"><span>Margins (mm)</span>
-          <div class="quad">
-            <label>Left<input id="pr-ml" type="number" min="0" step="0.5"></label>
-            <label>Top<input id="pr-mt" type="number" min="0" step="0.5"></label>
-            <label>Right<input id="pr-mr" type="number" min="0" step="0.5"></label>
-            <label>Bottom<input id="pr-mb" type="number" min="0" step="0.5"></label>
-          </div>
-        </div>
-        <div class="field"><span>Padding (mm)</span>
-          <div class="quad">
-            <label>Left<input id="pr-pl" type="number" min="0" step="0.5"></label>
-            <label>Top<input id="pr-pt" type="number" min="0" step="0.5"></label>
-            <label>Right<input id="pr-pr" type="number" min="0" step="0.5"></label>
-            <label>Bottom<input id="pr-pb" type="number" min="0" step="0.5"></label>
-          </div>
-        </div>
-        <div class="row">
-          <button id="pr-update">Update this size</button>
-          <button id="pr-new">Save as new</button>
-          <button id="pr-delete" class="danger">Delete</button>
-        </div>
-        <div class="row">
-          <button id="pr-a4" class="ghost">Fill A4</button>
-          <button id="pr-reset" class="ghost">Reset to defaults</button>
-        </div>
-        <p class="muted">Width and length are the paper size. <b>Margins</b> are the edge the printer
-          cannot reach: they are left out of the page and the printout (a 58 mm roll with 5 mm
-          margins gives a 48 mm page). <b>Padding</b> is free space kept inside the page when
-          adding items.</p>
-      </div>
+    <div class="card">
+      <h2>Printer</h2>
+      <p id="printer-status" class="muted">Not connected</p>
+      <div class="field"><label for="cut">Cut after page</label><input id="cut" type="checkbox"></div>
+      <p class="muted">Each page prints at its own width, so set the page size to match your paper.</p>
+    </div>
 
-      <div class="card">
-        <h2>Printer</h2>
-        <div class="field"><label for="head">Head width</label>
-          <select id="head">
-            <option value="384">58 mm printer (384 dots)</option>
-            <option value="576">80 mm printer (576 dots)</option>
-          </select>
-        </div>
-        <div class="field"><label for="cut">Cut after page</label><input id="cut" type="checkbox"></div>
-        <p class="muted">Pages wider than the printer head are scaled down to fit.</p>
-      </div>
+    <div class="card">
+      <h2>Page sizes</h2>
+      <p class="muted">Edit them in the toolbar when nothing is selected.</p>
+      <div class="row"><button id="pr-reset">Reset to the default sizes</button></div>
+    </div>
 
-      <div class="card">
-        <div class="row between"><h2>Log</h2><button id="clear-log" class="ghost">Clear</button></div>
-        <div id="log"></div>
-      </div>
-    </aside>
-  </main>
+    <div class="card">
+      <div class="row between"><h2>Log</h2><button id="clear-log" class="ghost">Clear</button></div>
+      <div id="log"></div>
+    </div>
+  </aside>
 
-  <input type="file" id="file-image" accept="image/*" hidden>
+  <div id="toast" class="toast hidden" role="status"></div>
+
+  <input type="file" id="file-image" accept="image/*" multiple hidden>
   <input type="file" id="file-pdf" accept="application/pdf" hidden>
   <script type="module" src="./src/main.js"></script>
 </body>

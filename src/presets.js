@@ -5,7 +5,15 @@
 //   padding             free space kept inside the page when placing new items
 //                       (a guide only; it does not limit where you can put things)
 
+import { mmToDots } from "./units.js";
+
 const KEY = "bytecintia.presets";
+
+// The page is the printable area: the paper minus its unprintable margins.
+export const printableWidthMm = (p) => Math.max(1, p.widthMm - p.margins.left - p.margins.right);
+export const printableLengthMm = (p) =>
+  p.lengthMm ? Math.max(1, p.lengthMm - p.margins.top - p.margins.bottom) : null;
+export const pageWidthDots = (p) => mmToDots(printableWidthMm(p));
 
 const box = (top, right, bottom, left) => ({ top, right, bottom, left });
 

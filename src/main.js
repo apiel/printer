@@ -1,43 +1,46 @@
-import { connect, disconnect, send, onLog, onChange, isConnected, printerName } from "./ble.js";
+import { FONTS, SIZES, matchFont } from "./fonts.js";
+import { connect, send, onLog, onChange as onBleChange, isConnected, printerName } from "./ble.js";
 import { init, feed, cut, concat, rasterCommand } from "./escpos.js";
-import { mmToDots, dotsToMm, newId, TEXT_DEFAULT } from "./units.js";
-import { createTextEditor } from "./editor.js";
-import { loadPresets, savePresets, DEFAULT_PRESETS } from "./presets.js";
-import { newDocument, newPage, loadDocument, saveDocument } from "./doc.js";
-import {
-  renderPage, pageHeightDots, pageWidthDots, contentWidthDots, printableWidthMm, printableLengthMm,
-  itemHeight, itemBox, toBlackWhite, toPrintBitmap, canvasToDataUrl, imageFileToDataUrl,
-} from "./render.js";
+import { mmToDots, dotsToMm, newId, ROLL_MIN_MM } from "./units.js";
+import { DEFAULT_PRESETS, loadPresets, savePresets, printableLengthMm, pageWidthDots } from "./presets.js";
+import { loadDoc, saveDoc } from "./storage.js";
+import { toPrintBitmap, fileToCanvas, canvasToJpeg } from "./bitmap.js";
+import { renderPage } from "./render.js";
+import { createRichText } from "./richtext.js";
+import { createPages } from "./pages.js";
 import { readPdfPages } from "./pdf.js";
+import { hydrateIcons, icon } from "./icons.js";
 
 const $ = (id) => document.getElementById(id);
+const stage = $("stage");
 const PREFS_KEY = "bytecintia.prefs";
 
 const state = {
   presets: [],
-  doc: null,
-  pageIndex: 0,
-  selected: null, // id of the selected item on the current page
-  editing: null, // id of the text item being edited in place
-  tool: "select", // "select" | "line"
-  zoom: 1,
-  drag: null,
-  renderSeq: 0,
-  rafPending: false,
-  prefs: { head: 384, cut: false },
+  presetId: null,
+  minLength: mmToDots(ROLL_MIN_MM), // a roll is never shorter than this (dots)
+  prefs: { cut: false },
+  lockRatio: true, // image width and height keep their proportions
+  busy: false,
 };
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const mm = (dots) => Math.round(dotsToMm(dots) * 10) / 10;
-const preset = () => state.presets.find((p) => p.id === state.doc.presetId) || state.presets[0];
-const page = () => state.doc.pages[state.pageIndex];
-const findItem = (id) => page().items.find((i) => i.id === id);
-const selectedItem = () => (state.selected ? findItem(state.selected) : null);
+const preset = () => state.presets.find((p) => p.id === state.presetId) || state.presets[0];
 
 function log(msg) {
   const el = $("log");
   el.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
   el.scrollTop = el.scrollHeight;
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add("hidden"), 4500);
 }
 
 function guard(fn) {
@@ -46,6 +49,7 @@ function guard(fn) {
       await fn(...args);
     } catch (err) {
       log(`Error: ${err.message}`);
+      toast(err.message);
     }
   };
 }
@@ -68,530 +72,367 @@ function savePrefs() {
   }
 }
 
-// ---- rendering the editor -------------------------------------------------
+// ---- the document ---------------------------------------------------------
 
-function scheduleRender() {
-  if (state.rafPending) return;
-  state.rafPending = true;
-  requestAnimationFrame(() => {
-    state.rafPending = false;
-    render();
-  });
-}
+const contentWidth = () => pageWidthDots(preset()) - mmToDots(preset().padding.left + preset().padding.right);
 
-async function render() {
-  const seq = ++state.renderSeq;
-  const p = preset();
-  const gray = await renderPage(state.doc, p, state.pageIndex, state.editing);
-  if (seq !== state.renderSeq) return; // a newer render is already on its way
-  const bw = toBlackWhite(gray, false);
-  const view = $("page-canvas");
-  view.width = bw.width;
-  view.height = bw.height;
-  view.getContext("2d").drawImage(bw, 0, 0);
-  layoutSheet(bw.width, bw.height, p);
-  const editedItem = state.editing && findItem(state.editing);
-  if (editedItem) editor.position(editedItem, state.zoom);
-  updateSelection();
-  updatePageInfo();
-}
-
-function layoutSheet(width, height, p) {
-  state.zoom = clamp(($("stage").clientWidth - 48) / width, 0.2, 3);
-  const z = state.zoom;
-  const sheet = $("sheet");
-  sheet.style.width = `${width * z}px`;
-  sheet.style.height = `${height * z}px`;
-
-  // Faint guide for the padding. Margins are not drawn: they are not part of the page.
-  const guide = $("padding-guide").style;
-  guide.left = `${mmToDots(p.padding.left) * z}px`;
-  guide.right = `${mmToDots(p.padding.right) * z}px`;
-  guide.top = `${mmToDots(p.padding.top) * z}px`;
-  guide.bottom = `${mmToDots(p.padding.bottom) * z}px`;
-}
-
-function updateSelection() {
-  const sel = $("sel");
-  const item = selectedItem();
-  if (!item || state.editing) {
-    sel.classList.add("hidden");
-    return;
-  }
-  const b = itemBox(item);
-  const z = state.zoom;
-  sel.classList.remove("hidden");
-  Object.assign(sel.style, {
-    left: `${b.x * z}px`,
-    top: `${b.y * z}px`,
-    width: `${b.w * z}px`,
-    height: `${b.h * z}px`,
-  });
-}
-
-function updatePageInfo() {
-  const p = preset();
-  const roll = !p.lengthMm;
-  const count = state.doc.pages.length;
-  $("page-nav").classList.toggle("hidden", roll);
-  $("len-handle").classList.toggle("hidden", !roll);
-  $("fit-length").classList.toggle("hidden", !roll);
-  $("page-label").textContent = `Page ${state.pageIndex + 1} / ${count}`;
-  $("prev-page").disabled = state.pageIndex === 0;
-  $("next-page").disabled = state.pageIndex >= count - 1;
-  $("remove-page").disabled = count <= 1;
-  const printable = `${printableWidthMm(p)} mm wide` + (roll ? "" : ` × ${printableLengthMm(p)} mm`);
-  $("page-info").textContent = roll
-    ? `Current: ${p.name}. Printable area ${printable}, endless (grows with content, minimum ${mm(page().minLength)} mm).`
-    : `Current: ${p.name}. Printable area ${printable} (paper ${p.widthMm} × ${p.lengthMm} mm).`;
-}
-
-// Saving is debounced (typing would otherwise save on every key) and flushed on exit.
 let saveTimer = null;
 
 function saveNow() {
   clearTimeout(saveTimer);
-  if (!saveDocument(state.doc)) log("Could not save the document: browser storage is full.");
+  const ok = saveDoc({ presetId: state.presetId, minLength: state.minLength, pages: pages.getModel() });
+  if (!ok) toast("Could not save: browser storage is full (large images or PDFs).");
 }
 
-function commit() {
+// Anything that changes the document goes through here.
+function changed() {
+  pages.layout();
+  updateImageFields();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveNow, 300);
-  scheduleRender();
-  updateSelection();
 }
 
-// ---- inspector ------------------------------------------------------------
+const pages = createPages({
+  stage,
+  getPreset: preset,
+  getMinLength: () => state.minLength,
+  setMinLength: (v) => (state.minLength = v),
+  onChange: changed,
+  onSelection: (item) => updateToolbar(item),
+  onDropImages: (files, pageIndex, at) => files.forEach((f) => addImageFile(f, pageIndex, at)),
+});
 
-function renderPanel() {
-  const item = selectedItem();
-  $("no-selection").classList.toggle("hidden", !!item);
-  $("fields").classList.toggle("hidden", !item);
-  updateSelection();
-  if (!item) return;
+const rich = createRichText({
+  root: stage,
+  getEditable: () => pages.editingContent(),
+  // Formatting a box that is only selected: start editing it with all its text selected.
+  onNeedEditor: () => {
+    const item = pages.selectedItem();
+    if (item?.type !== "text") return null;
+    pages.startEdit(item, { selectAll: true });
+    return pages.editingContent();
+  },
+  onChange: () => {
+    pages.syncEditing();
+    changed();
+  },
+  onSelection: () => updateFormatState(),
+  onImageFiles: (files) => files.forEach((f) => addImageFile(f)),
+});
 
-  document.querySelectorAll("[data-for]").forEach((row) => {
-    row.classList.toggle("hidden", !row.dataset.for.split(" ").includes(item.type));
-  });
-  $("p-x").value = mm(item.x);
-  $("p-y").value = mm(item.y);
-  $("p-w").value = mm(item.w);
-  $("p-h").value = mm(item.h ?? 0);
-  $("p-thick").value = item.thickness ?? 3;
-}
-
-function setWidth(item, w) {
-  if (item.type === "image" && item.w) item.h = Math.round((item.h * w) / item.w);
-  item.w = w;
-}
-
-function bindInspector() {
-  const onNumber = (id, apply) =>
-    $(id).addEventListener("change", (e) => {
-      const item = selectedItem();
-      if (!item) return;
-      apply(item, Number(e.target.value));
-      commit();
-    });
-  onNumber("p-x", (it, v) => { it.x = clamp(mmToDots(v), 0, pageWidthDots(preset()) - 4); });
-  onNumber("p-y", (it, v) => { it.y = Math.max(0, mmToDots(v)); });
-  onNumber("p-w", (it, v) => setWidth(it, clamp(mmToDots(v), 8, pageWidthDots(preset()))));
-  onNumber("p-h", (it, v) => { if (it.type === "image") it.h = clamp(mmToDots(v), 8, 8000); });
-  onNumber("p-thick", (it, v) => { it.thickness = clamp(Math.round(v), 1, 60); });
-  $("p-delete").addEventListener("click", deleteSelected);
-}
-
-// ---- adding and removing content ------------------------------------------
-
-function nextFreeY() {
-  let y = mmToDots(preset().padding.top);
-  for (const it of page().items) y = Math.max(y, it.y + itemHeight(it) + 4);
-  return y;
-}
-
-function addItem(item) {
-  const full = { id: newId(), ...item };
-  page().items.push(full);
-  state.selected = full.id;
-  renderPanel();
-  commit();
-}
+// ---- adding things --------------------------------------------------------
 
 function addText() {
   const p = preset();
-  addItem({
-    type: "text",
-    x: mmToDots(p.padding.left),
-    y: nextFreeY(),
-    w: contentWidthDots(p),
-    blocks: [{ text: "", size: TEXT_DEFAULT, bold: false, align: 0, list: null }],
-  });
-  startEdit(state.selected); // type right away, directly on the page
+  const i = pages.currentIndex();
+  pages.addText(i, { x: mmToDots(p.padding.left), y: pages.nextFreeY(i), w: contentWidth() });
 }
 
-// ---- editing text in place ----
-
-const editor = createTextEditor({
-  onChange(blocks) {
-    const item = state.editing && findItem(state.editing);
-    if (!item) return;
-    item.blocks = blocks;
-    commit();
-  },
-  onStop(item, blocks) {
-    state.editing = null;
-    item.blocks = blocks;
-    // Text that was emptied (or never typed) is removed.
-    if (blocks.every((b) => !b.text.trim())) {
-      page().items = page().items.filter((i) => i.id !== item.id);
-      if (state.selected === item.id) state.selected = null;
-    }
-    saveNow();
-    renderPanel();
-    scheduleRender();
-  },
-});
-
-function startEdit(id) {
-  const item = findItem(id);
-  if (!item || item.type !== "text") return;
-  state.selected = id;
-  state.editing = id;
-  editor.start(item, state.zoom);
-  renderPanel();
-  scheduleRender(); // hides the item on the canvas while the editor shows it
-}
-
-const stopEdit = () => editor.stop();
-
-async function onImageChosen(file) {
+async function addImageFile(file, pageIndex = pages.currentIndex(), at) {
   const p = preset();
-  const maxW = contentWidthDots(p);
-  const img = await imageFileToDataUrl(file, maxW);
-  const w = Math.min(maxW, img.width);
-  addItem({
-    type: "image",
-    x: mmToDots(p.padding.left),
-    y: nextFreeY(),
+  const width = pageWidthDots(p);
+  const canvas = await fileToCanvas(file, 1000);
+  const w = Math.min(canvas.width, contentWidth());
+  const h = Math.max(4, Math.round((canvas.height * w) / canvas.width));
+  await pages.addImage(pageIndex, {
+    orig: canvasToJpeg(canvas),
     w,
-    h: Math.round((img.height * w) / img.width),
-    src: img.src,
+    h,
+    x: at ? clamp(Math.round(at.x - w / 2), 0, Math.max(0, width - w)) : mmToDots(p.padding.left),
+    y: at ? Math.max(0, Math.round(at.y - h / 2)) : pages.nextFreeY(pageIndex),
   });
 }
 
-// Rolls: PDF pages are stacked on the one endless page.
-// Fixed pages: each PDF page gets its own page, scaled down to fit if needed.
-async function onPdfChosen(file) {
+// Each PDF page becomes an image. On a roll they are stacked; on a fixed size every
+// PDF page gets a page of its own, scaled down to fit.
+async function importPdf(file) {
   const p = preset();
-  const canvases = await readPdfPages(file, contentWidthDots(p));
+  const canvases = await readPdfPages(file, contentWidth());
   log(`PDF: ${canvases.length} page(s).`);
   const left = mmToDots(p.padding.left);
-  const roll = !p.lengthMm;
+  const padTop = mmToDots(p.padding.top);
+  const padBottom = mmToDots(p.padding.bottom);
+  const fixedHeight = p.lengthMm ? mmToDots(printableLengthMm(p)) : null;
 
-  canvases.forEach((canvas, i) => {
-    const item = {
-      id: newId(),
-      type: "image",
-      x: left,
-      y: 0,
-      w: canvas.width,
-      h: canvas.height,
-      src: canvasToDataUrl(canvas, true),
-    };
-    if (roll) {
-      item.y = nextFreeY();
-    } else {
-      if (i > 0 || page().items.length) {
-        state.doc.pages.push(newPage());
-        state.pageIndex = state.doc.pages.length - 1;
+  for (let i = 0; i < canvases.length; i++) {
+    const canvas = canvases[i];
+    let w = canvas.width;
+    let h = canvas.height;
+    let index;
+    let y;
+    if (fixedHeight) {
+      const room = fixedHeight - padTop - padBottom;
+      if (h > room) {
+        w = Math.floor((w * room) / h);
+        h = room;
       }
-      const available = pageHeightDots(p, page()) - mmToDots(p.padding.top) - mmToDots(p.padding.bottom);
-      const scale = Math.min(1, available / canvas.height);
-      item.w = Math.round(canvas.width * scale);
-      item.h = Math.round(canvas.height * scale);
-      item.y = mmToDots(p.padding.top);
-    }
-    page().items.push(item);
-  });
-
-  state.selected = null;
-  renderPanel();
-  commit();
-}
-
-function deleteSelected() {
-  if (!state.selected) return;
-  page().items = page().items.filter((i) => i.id !== state.selected);
-  state.selected = null;
-  renderPanel();
-  commit();
-}
-
-function gotoPage(index) {
-  stopEdit();
-  state.pageIndex = clamp(index, 0, state.doc.pages.length - 1);
-  state.selected = null;
-  renderPanel();
-  commit();
-}
-
-function addPage() {
-  state.doc.pages.push(newPage());
-  gotoPage(state.doc.pages.length - 1);
-}
-
-function removePage() {
-  if (state.doc.pages.length <= 1) return;
-  state.doc.pages.splice(state.pageIndex, 1);
-  gotoPage(state.pageIndex);
-}
-
-function setTool(tool) {
-  state.tool = tool;
-  document.querySelectorAll("[data-tool]").forEach((b) => b.classList.toggle("active", b.dataset.tool === tool));
-  $("sheet").classList.toggle("crosshair", tool === "line");
-}
-
-// ---- mouse / touch interaction on the page --------------------------------
-
-function dotsFromEvent(e) {
-  const r = $("sheet").getBoundingClientRect();
-  return { x: (e.clientX - r.left) / state.zoom, y: (e.clientY - r.top) / state.zoom };
-}
-
-function hitTest(p) {
-  const items = page().items;
-  for (let i = items.length - 1; i >= 0; i--) {
-    const b = itemBox(items[i]);
-    if (p.x >= b.x - 4 && p.x <= b.x + b.w + 4 && p.y >= b.y - 4 && p.y <= b.y + b.h + 4) return items[i];
-  }
-  return null;
-}
-
-function bindSheet() {
-  const sheet = $("sheet");
-
-  sheet.addEventListener("pointerdown", (e) => {
-    if (e.target.closest(".handle, .len-handle, #text-editor")) return;
-    if (state.editing) stopEdit();
-    const p = dotsFromEvent(e);
-    if (state.tool === "line") {
-      const item = { id: newId(), type: "line", x: Math.round(p.x), y: Math.round(p.y), w: 1, thickness: 3 };
-      page().items.push(item);
-      state.selected = item.id;
-      state.drag = { kind: "newline", id: item.id, startX: p.x };
+      const last = pages.count() - 1;
+      index = i === 0 && pages.isEmpty(last) ? last : pages.addPage();
+      y = padTop;
     } else {
-      const hit = hitTest(p);
-      state.selected = hit ? hit.id : null;
-      state.drag = hit ? { kind: "move", id: hit.id, dx: p.x - hit.x, dy: p.y - hit.y } : null;
-      renderPanel();
+      index = pages.currentIndex();
+      y = pages.nextFreeY(index);
     }
-    sheet.setPointerCapture(e.pointerId);
-  });
-
-  sheet.addEventListener("pointermove", (e) => {
-    const d = state.drag;
-    if (!d) return;
-    const p = dotsFromEvent(e);
-    const W = pageWidthDots(preset());
-    if (d.kind === "length") {
-      // No lower bound: the roll never gets shorter than its content plus bottom margin.
-      page().minLength = Math.max(0, d.startMin + Math.round((e.clientY - d.startY) / state.zoom));
-    } else {
-      const item = d.kind === "resize" ? selectedItem() : findItem(d.id);
-      if (!item) return;
-      if (d.kind === "move") {
-        item.x = clamp(Math.round(p.x - d.dx), 0, Math.max(0, W - item.w));
-        item.y = Math.max(0, Math.round(p.y - d.dy));
-      } else if (d.kind === "newline") {
-        item.x = Math.round(clamp(Math.min(d.startX, p.x), 0, W));
-        item.w = Math.max(1, Math.round(Math.abs(p.x - d.startX)));
-      } else if (d.kind === "resize") {
-        setWidth(item, clamp(Math.round(p.x - item.x), 8, W - item.x));
-      }
-    }
-    scheduleRender();
-    updateSelection();
-  });
-
-  const endDrag = () => {
-    const d = state.drag;
-    if (!d) return;
-    state.drag = null;
-    if (d.kind === "newline") setTool("select");
-    renderPanel();
-    commit();
-  };
-  sheet.addEventListener("pointerup", endDrag);
-  sheet.addEventListener("pointercancel", endDrag);
-
-  // Double-click a text item to edit it in place.
-  sheet.addEventListener("dblclick", (e) => {
-    if (e.target.closest("#text-editor")) return;
-    const hit = hitTest(dotsFromEvent(e));
-    if (hit?.type === "text") startEdit(hit.id);
-  });
-
-  $("handle-se").addEventListener("pointerdown", (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    state.drag = { kind: "resize" };
-    $("handle-se").setPointerCapture(e.pointerId);
-  });
-
-  $("len-handle").addEventListener("pointerdown", (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    // Start from the length shown on screen, so dragging up shrinks it right away.
-    state.drag = { kind: "length", startY: e.clientY, startMin: $("page-canvas").height };
-    $("len-handle").setPointerCapture(e.pointerId);
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.target.closest("input, textarea, select, [contenteditable]")) return;
-    if (e.key === "Delete" || e.key === "Backspace") {
-      deleteSelected();
-      e.preventDefault();
-    } else if (e.key === "Enter" && selectedItem()?.type === "text") {
-      startEdit(state.selected);
-      e.preventDefault();
-    } else if (e.key === "Escape") {
-      state.selected = null;
-      setTool("select");
-      renderPanel();
-    }
-  });
-}
-
-// ---- page size presets ----------------------------------------------------
-
-function fillPresetSelect() {
-  const sel = $("preset");
-  sel.replaceChildren();
-  for (const p of state.presets) {
-    const size = `${p.widthMm} mm × ${p.lengthMm ? `${p.lengthMm} mm` : "roll"}`;
-    sel.append(new Option(`${p.name} (${size})`, p.id));
+    await pages.addImage(index, { orig: canvasToJpeg(canvas), w, h, x: left, y });
   }
-  sel.value = preset().id;
 }
 
-function fillPresetForm(p) {
-  $("pr-name").value = p.name;
-  $("pr-width").value = p.widthMm;
-  $("pr-roll").checked = !p.lengthMm;
-  $("pr-length").value = p.lengthMm ?? 297;
-  $("pr-ml").value = p.margins.left;
-  $("pr-mr").value = p.margins.right;
-  $("pr-mt").value = p.margins.top;
-  $("pr-mb").value = p.margins.bottom;
-  $("pr-pl").value = p.padding.left;
-  $("pr-pr").value = p.padding.right;
-  $("pr-pt").value = p.padding.top;
-  $("pr-pb").value = p.padding.bottom;
-  syncRollFields();
-}
+// ---- the toolbox: what you see depends on what is selected -----------------
 
-// A roll has no top or bottom edge, so those margins do not apply.
-function syncRollFields() {
-  const roll = $("pr-roll").checked;
-  $("pr-length").disabled = roll;
-  $("pr-mt").disabled = roll;
-  $("pr-mb").disabled = roll;
-}
-
-function readPresetForm() {
-  const num = (id) => Math.max(0, Number($(id).value) || 0);
-  const roll = $("pr-roll").checked;
-  return {
-    name: $("pr-name").value.trim() || "Untitled",
-    widthMm: Math.max(10, num("pr-width")),
-    lengthMm: roll ? null : Math.max(10, num("pr-length")),
-    margins: { left: num("pr-ml"), right: num("pr-mr"), top: roll ? 0 : num("pr-mt"), bottom: roll ? 0 : num("pr-mb") },
-    padding: { left: num("pr-pl"), right: num("pr-pr"), top: num("pr-pt"), bottom: num("pr-pb") },
-  };
-}
-
-function persistPresets() {
-  if (!savePresets(state.presets)) log("Could not save page sizes: browser storage is full.");
-}
-
-// Switch the document to a preset, keeping every item inside the new page width.
-function applyPreset(id) {
-  state.doc.presetId = id;
-  const width = pageWidthDots(preset());
-  for (const pg of state.doc.pages) {
-    for (const it of pg.items) {
-      if (it.w > width) setWidth(it, width);
-      it.x = clamp(it.x, 0, Math.max(0, width - it.w));
-    }
+function setSizeSelect(px) {
+  const select = $("size");
+  select.querySelector("[data-temp]")?.remove();
+  if (!SIZES.includes(px)) {
+    const option = new Option(String(px), px);
+    option.dataset.temp = "1";
+    select.append(option);
   }
-  state.selected = null;
-  fillPresetSelect();
-  fillPresetForm(preset());
-  renderPanel();
-  commit();
+  select.value = String(px);
 }
 
-function bindPresets() {
-  $("preset").addEventListener("change", (e) => applyPreset(e.target.value));
-  $("pr-roll").addEventListener("change", syncRollFields);
+function updateToolbar(item) {
+  const context = !item ? "page" : item.type === "text" ? "text" : "image";
+  document.querySelectorAll(".tools").forEach((t) => t.classList.toggle("active", t.dataset.ctx === context));
+  $("delete-item").disabled = !item;
+  updateFormatState();
+  updateImageFields();
+}
 
-  $("pr-new").addEventListener("click", () => {
-    const p = { id: newId(), ...readPresetForm() };
-    state.presets.push(p);
-    persistPresets();
-    applyPreset(p.id);
+function updateFormatState() {
+  const s = rich.state();
+  document.querySelectorAll("[data-cmd]").forEach((b) => b.classList.toggle("active", !!s?.active[b.dataset.cmd]));
+  if (!s) return;
+  $("font").value = matchFont(s.family)?.family ?? "";
+  setSizeSelect(s.size);
+}
+
+// Show the selected image's size on the page (not while the box is being typed in).
+function updateImageFields() {
+  const item = pages.selectedItem();
+  if (item?.type !== "image") return;
+  for (const [id, dots] of [["img-w", item.bw], ["img-h", item.bh]]) {
+    if (document.activeElement !== $(id)) $(id).value = mm(dots);
+  }
+}
+
+function bindToolbar() {
+  // Keep the text selection when a toolbar button is pressed.
+  document.querySelector(".toolbar").addEventListener("mousedown", (e) => {
+    if (e.target.closest("button")) e.preventDefault();
   });
-  $("pr-update").addEventListener("click", () => {
-    const p = preset();
-    Object.assign(p, readPresetForm());
-    persistPresets();
-    applyPreset(p.id);
-  });
-  $("pr-delete").addEventListener("click", () => {
-    if (state.presets.length <= 1) {
-      log("Keep at least one page size.");
-      return;
+
+  // text
+  for (const f of FONTS) {
+    const option = new Option(f.label, f.family);
+    option.style.fontFamily = f.family;
+    $("font").append(option);
+  }
+  for (const s of SIZES) $("size").append(new Option(String(s), s));
+  $("font").addEventListener("change", (e) => rich.setFont(e.target.value));
+  $("size").addEventListener("change", (e) => rich.setSize(Number(e.target.value)));
+  $("size-down").addEventListener("click", () => rich.stepSize(-1));
+  $("size-up").addEventListener("click", () => rich.stepSize(1));
+  document.querySelectorAll("[data-cmd]").forEach((b) => b.addEventListener("click", () => rich.command(b.dataset.cmd)));
+
+  // image
+  const setLock = (on) => {
+    state.lockRatio = on;
+    $("img-lock").classList.toggle("active", on);
+    $("img-lock").innerHTML = icon(on ? "lock" : "unlock");
+  };
+  $("img-lock").addEventListener("click", () => setLock(!state.lockRatio));
+  $("img-w").addEventListener("change", (e) => pages.setImageSize("w", mmToDots(Number(e.target.value)), state.lockRatio));
+  $("img-h").addEventListener("change", (e) => pages.setImageSize("h", mmToDots(Number(e.target.value)), state.lockRatio));
+  $("img-rot-l").addEventListener("click", () => pages.rotateSelected(-90));
+  $("img-rot-r").addEventListener("click", () => pages.rotateSelected(90));
+  $("img-fit-w").addEventListener("click", () => pages.fitSelected("width"));
+  $("img-fit-p").addEventListener("click", () => pages.fitSelected("page"));
+
+  // adding and removing
+  $("add-text").addEventListener("click", addText);
+  $("add-image").addEventListener("click", () => $("file-image").click());
+  $("import-pdf").addEventListener("click", () => $("file-pdf").click());
+  $("add-page").addEventListener("click", () => pages.addPage());
+  $("delete-item").addEventListener("click", () => pages.deleteSelected());
+
+  $("file-image").addEventListener("change", guard(async (e) => {
+    const files = [...e.target.files];
+    e.target.value = "";
+    for (const f of files) await addImageFile(f);
+  }));
+  $("file-pdf").addEventListener("change", guard(async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (file) await importPdf(file);
+  }));
+
+  $("action").addEventListener("click", guard(async () => {
+    if (state.busy) return;
+    state.busy = true;
+    refreshAction();
+    try {
+      if (isConnected()) await printDocument();
+      else await connect();
+    } finally {
+      state.busy = false;
+      refreshAction();
     }
-    state.presets = state.presets.filter((p) => p.id !== state.doc.presetId);
-    persistPresets();
-    applyPreset(state.presets[0].id);
-  });
-  $("pr-a4").addEventListener("click", () => {
-    const a4 = DEFAULT_PRESETS.find((p) => p.id === "a4");
-    fillPresetForm({ ...structuredClone(a4), name: "A4 page" });
-  });
-  $("pr-reset").addEventListener("click", () => {
-    state.presets = structuredClone(DEFAULT_PRESETS);
-    persistPresets();
-    applyPreset(state.presets[0].id);
+  }));
+
+  // Text typed or changed inside a text box.
+  stage.addEventListener("input", () => {
+    rich.afterInput();
+    pages.syncEditing();
+    changed();
   });
 }
 
 // ---- printer --------------------------------------------------------------
 
-function refreshConnection(connected) {
-  $("status").textContent = connected ? `Connected: ${printerName() || "printer"}` : "Not connected";
-  $("connect").textContent = connected ? "Disconnect" : "Connect";
-  document.querySelectorAll("[data-needs-printer]").forEach((b) => (b.disabled = !connected));
+// One button: Connect until the printer is connected, then Print.
+function refreshAction() {
+  const connected = isConnected();
+  const button = $("action");
+  const label = state.busy ? (connected ? "Printing…" : "Connecting…") : connected ? "Print" : "Connect";
+  button.innerHTML = `${icon(connected ? "printer" : "bluetooth")}<span>${label}</span>`;
+  button.title = connected ? "Print" : "Connect to the printer";
+  button.disabled = state.busy;
+  $("printer-status").textContent = connected ? `Connected: ${printerName() || "printer"}` : "Not connected";
 }
 
+// Every page is printed at its own width, so the page size should match the paper.
 async function printDocument() {
-  if (!isConnected()) throw new Error("Connect to the printer first.");
-  const p = preset();
-  const head = state.prefs.head;
-  const width = pageWidthDots(p);
-  if (width > head) log(`Page is ${width} dots wide, printer head is ${head}: scaling to ${Math.round((head / width) * 100)}%.`);
-  else if (width < head) log(`Page is ${width} dots wide, printer head is ${head}: printing at real size, centred.`);
+  pages.stopEdit();
+  const model = pages.getModel();
+  if (!model.some((pg) => pg.items.length)) throw new Error("Nothing to print yet.");
 
-  const count = state.doc.pages.length;
-  for (let i = 0; i < count; i++) {
-    const gray = await renderPage(state.doc, p, i);
-    const parts = [init(), rasterCommand(toPrintBitmap(gray, head)), feed(3)];
+  const elements = pages.pageElements();
+  for (let i = 0; i < elements.length; i++) {
+    const canvas = await renderPage(elements[i]);
+    const parts = [init(), rasterCommand(toPrintBitmap(canvas)), feed(3)];
     if (state.prefs.cut) parts.push(cut());
     await send(concat(...parts));
-    log(`Printed page ${i + 1} of ${count}.`);
+    log(`Printed page ${i + 1} of ${elements.length} (${canvas.width} × ${canvas.height} dots).`);
   }
+}
+
+// ---- page sizes (the toolbox shown when nothing is selected) ----------------
+
+function fillPresetSelect() {
+  const select = $("pg-preset");
+  select.replaceChildren();
+  for (const p of state.presets) select.append(new Option(p.name, p.id));
+  select.value = preset().id;
+}
+
+function fillPresetForm(p) {
+  const set = (id, value) => {
+    if (document.activeElement !== $(id)) $(id).value = value;
+  };
+  set("pg-name", p.name);
+  set("pg-width", p.widthMm);
+  $("pg-roll").checked = !p.lengthMm;
+  set("pg-length", p.lengthMm ?? 297);
+  set("pg-ml", p.margins.left);
+  set("pg-mr", p.margins.right);
+  set("pg-mt", p.margins.top);
+  set("pg-mb", p.margins.bottom);
+  set("pg-pl", p.padding.left);
+  set("pg-pr", p.padding.right);
+  set("pg-pt", p.padding.top);
+  set("pg-pb", p.padding.bottom);
+  syncRollFields();
+}
+
+// A roll has no length and no top or bottom edge, so those fields do not apply.
+function syncRollFields() {
+  const roll = $("pg-roll").checked;
+  $("pg-length").disabled = roll;
+  $("pg-mt").disabled = roll;
+  $("pg-mb").disabled = roll;
+  $("pg-fit").disabled = !roll;
+}
+
+function readPresetForm() {
+  const num = (id) => Math.max(0, Number($(id).value) || 0);
+  const roll = $("pg-roll").checked;
+  return {
+    name: $("pg-name").value.trim() || "Untitled",
+    widthMm: Math.max(10, num("pg-width")),
+    lengthMm: roll ? null : Math.max(10, num("pg-length")),
+    margins: { left: num("pg-ml"), right: num("pg-mr"), top: roll ? 0 : num("pg-mt"), bottom: roll ? 0 : num("pg-mb") },
+    padding: { left: num("pg-pl"), right: num("pg-pr"), top: num("pg-pt"), bottom: num("pg-pb") },
+  };
+}
+
+function persistPresets() {
+  if (!savePresets(state.presets)) toast("Could not save page sizes: browser storage is full.");
+}
+
+// Adding pages only makes sense on fixed sizes.
+function refreshPresetUi() {
+  const roll = !preset().lengthMm;
+  $("add-page").classList.toggle("hidden", roll);
+  $("img-fit-p").classList.toggle("hidden", roll); // on a roll, fitting the page is fitting the width
+}
+
+// Switch to a page size (or apply changes made to the current one).
+function applyPreset(id) {
+  state.presetId = id;
+  fillPresetSelect();
+  fillPresetForm(preset());
+  refreshPresetUi();
+  pages.fitToWidth(pageWidthDots(preset()));
+  changed();
+}
+
+function bindPresets() {
+  $("pg-preset").addEventListener("change", (e) => applyPreset(e.target.value));
+
+  // Edits change the current page size straight away.
+  const fields = ["pg-name", "pg-width", "pg-length", "pg-ml", "pg-mt", "pg-mr", "pg-mb", "pg-pl", "pg-pt", "pg-pr", "pg-pb"];
+  const commit = () => {
+    syncRollFields();
+    Object.assign(preset(), readPresetForm());
+    persistPresets();
+    applyPreset(state.presetId);
+  };
+  for (const id of fields) $(id).addEventListener("change", commit);
+  $("pg-roll").addEventListener("change", commit);
+
+  $("pg-new").addEventListener("click", () => {
+    const form = readPresetForm();
+    const p = { id: newId(), ...form, name: `${form.name} copy` };
+    state.presets.push(p);
+    persistPresets();
+    applyPreset(p.id);
+  });
+  $("pg-delete").addEventListener("click", () => {
+    if (state.presets.length <= 1) {
+      toast("Keep at least one page size.");
+      return;
+    }
+    state.presets = state.presets.filter((p) => p.id !== state.presetId);
+    persistPresets();
+    applyPreset(state.presets[0].id);
+  });
+  $("pg-fit").addEventListener("click", () => {
+    state.minLength = 0;
+    changed();
+  });
+  $("pr-reset").addEventListener("click", () => {
+    state.presets = structuredClone(DEFAULT_PRESETS);
+    persistPresets();
+    applyPreset(state.presets[0].id);
+    setDrawer(false);
+  });
+}
+
+// ---- the menu --------------------------------------------------------------
+
+function setDrawer(open) {
+  $("drawer").classList.toggle("open", open);
+  $("scrim").classList.toggle("hidden", !open);
 }
 
 // ---- start ----------------------------------------------------------------
@@ -599,52 +440,34 @@ async function printDocument() {
 function boot() {
   state.prefs = loadPrefs();
   state.presets = loadPresets();
-  state.doc = loadDocument() || newDocument(state.presets[0].id);
-  if (!state.presets.some((p) => p.id === state.doc.presetId)) state.doc.presetId = state.presets[0].id;
+  const saved = loadDoc();
+  state.presetId = saved && state.presets.some((p) => p.id === saved.presetId) ? saved.presetId : state.presets[0].id;
+  state.minLength = saved?.minLength ?? state.minLength;
 
+  const model = saved?.pages?.length ? saved.pages : [{ items: [] }];
+  // Text boxes converted from an older version have no width yet: let them fill the page.
+  for (const pg of model) {
+    for (const it of pg.items) {
+      if (it.type === "text" && !(it.w > 0)) {
+        it.w = contentWidth();
+        it.x = mmToDots(preset().padding.left);
+        it.y = mmToDots(preset().padding.top);
+      }
+    }
+  }
+
+  hydrateIcons();
   fillPresetSelect();
   fillPresetForm(preset());
-  $("head").value = state.prefs.head;
+  refreshPresetUi();
   $("cut").checked = !!state.prefs.cut;
 
-  bindSheet();
-  bindInspector();
+  bindToolbar();
   bindPresets();
 
-  $("connect").addEventListener("click", guard(async () => {
-    if (isConnected()) disconnect();
-    else await connect();
-  }));
-  $("print").addEventListener("click", guard(printDocument));
-  $("add-text").addEventListener("click", addText);
-  $("add-image").addEventListener("click", () => $("file-image").click());
-  $("import-pdf").addEventListener("click", () => $("file-pdf").click());
-  $("delete-item").addEventListener("click", deleteSelected);
-  $("prev-page").addEventListener("click", () => gotoPage(state.pageIndex - 1));
-  $("next-page").addEventListener("click", () => gotoPage(state.pageIndex + 1));
-  $("fit-length").addEventListener("click", () => {
-    page().minLength = 0;
-    commit();
-  });
-  $("add-page").addEventListener("click", addPage);
-  $("remove-page").addEventListener("click", removePage);
-  document.querySelectorAll("[data-tool]").forEach((b) => b.addEventListener("click", () => setTool(b.dataset.tool)));
-
-  $("file-image").addEventListener("change", guard(async (e) => {
-    const file = e.target.files[0];
-    e.target.value = "";
-    if (file) await onImageChosen(file);
-  }));
-  $("file-pdf").addEventListener("change", guard(async (e) => {
-    const file = e.target.files[0];
-    e.target.value = "";
-    if (file) await onPdfChosen(file);
-  }));
-
-  $("head").addEventListener("change", (e) => {
-    state.prefs.head = Number(e.target.value);
-    savePrefs();
-  });
+  $("menu-btn").addEventListener("click", () => setDrawer(true));
+  $("drawer-close").addEventListener("click", () => setDrawer(false));
+  $("scrim").addEventListener("click", () => setDrawer(false));
   $("cut").addEventListener("change", (e) => {
     state.prefs.cut = e.target.checked;
     savePrefs();
@@ -652,15 +475,15 @@ function boot() {
   $("clear-log").addEventListener("click", () => ($("log").textContent = ""));
 
   onLog(log);
-  onChange(refreshConnection);
-  refreshConnection(false);
-
+  onBleChange(refreshAction);
+  refreshAction();
   log(`Page: ${location.href} (secure context: ${window.isSecureContext})`);
   if (!navigator.bluetooth) log("Web Bluetooth is not available in this browser or page.");
 
-  window.addEventListener("resize", scheduleRender);
+  window.addEventListener("resize", () => pages.layout());
   window.addEventListener("pagehide", saveNow);
-  render();
+  pages.load(model);
+  updateToolbar(null);
 }
 
 boot();
