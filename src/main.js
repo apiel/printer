@@ -1,6 +1,6 @@
 import { FONTS, SIZES, matchFont } from "./fonts.js";
 import { connect, send, onLog, onChange as onBleChange, isConnected, printerName } from "./ble.js";
-import { init, feed, cut, concat, rasterCommand } from "./escpos.js";
+import { init, feed, concat, rasterCommand } from "./escpos.js";
 import { mmToDots, dotsToMm, newId, ROLL_MIN_MM } from "./units.js";
 import { DEFAULT_PRESETS, loadPresets, savePresets, pageLengthMm, pageWidthDots } from "./presets.js";
 import { loadDoc, saveDoc } from "./storage.js";
@@ -13,7 +13,6 @@ import { hydrateIcons, icon } from "./icons.js";
 
 const $ = (id) => document.getElementById(id);
 const stage = $("stage");
-const PREFS_KEY = "bytecintia.prefs";
 
 const state = {
   presets: [],
@@ -21,7 +20,6 @@ const state = {
   // A roll's length (dots). Automatic: it grows with its content and is at least this long.
   // Cropped (after dragging its end): exactly this long, whatever is below is cut off.
   roll: { length: mmToDots(ROLL_MIN_MM), crop: false },
-  prefs: { cut: false },
   lockRatio: true, // image width and height keep their proportions
   busy: false,
 };
@@ -54,24 +52,6 @@ function guard(fn) {
       toast(err.message);
     }
   };
-}
-
-// ---- saved preferences ----------------------------------------------------
-
-function loadPrefs() {
-  try {
-    return { ...state.prefs, ...JSON.parse(localStorage.getItem(PREFS_KEY) || "{}") };
-  } catch {
-    return { ...state.prefs };
-  }
-}
-
-function savePrefs() {
-  try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify(state.prefs));
-  } catch {
-    // storage unavailable: preferences last for this session only
-  }
 }
 
 // ---- the document ---------------------------------------------------------
@@ -318,9 +298,7 @@ async function printDocument() {
   for (let i = 0; i < elements.length; i++) {
     const page = await renderPage(elements[i]);
     const canvas = addMargins(page, printMargins());
-    const parts = [init(), rasterCommand(toPrintBitmap(canvas)), feed(3)];
-    if (state.prefs.cut) parts.push(cut());
-    await send(concat(...parts));
+    await send(concat(init(), rasterCommand(toPrintBitmap(canvas)), feed(3)));
     log(`Printed page ${i + 1} of ${elements.length} (${canvas.width} × ${canvas.height} dots, with margins).`);
   }
 }
@@ -454,7 +432,6 @@ function setDrawer(open) {
 // ---- start ----------------------------------------------------------------
 
 function boot() {
-  state.prefs = loadPrefs();
   state.presets = loadPresets();
   const saved = loadDoc();
   state.presetId = saved && state.presets.some((p) => p.id === saved.presetId) ? saved.presetId : state.presets[0].id;
@@ -476,7 +453,6 @@ function boot() {
   fillPresetSelect();
   fillPresetForm(preset());
   refreshPresetUi();
-  $("cut").checked = !!state.prefs.cut;
 
   bindToolbar();
   bindPresets();
@@ -484,10 +460,6 @@ function boot() {
   $("menu-btn").addEventListener("click", () => setDrawer(true));
   $("drawer-close").addEventListener("click", () => setDrawer(false));
   $("scrim").addEventListener("click", () => setDrawer(false));
-  $("cut").addEventListener("change", (e) => {
-    state.prefs.cut = e.target.checked;
-    savePrefs();
-  });
   $("clear-log").addEventListener("click", () => ($("log").textContent = ""));
 
   onLog(log);

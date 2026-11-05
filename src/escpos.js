@@ -16,7 +16,6 @@ export function concat(...parts) {
 
 export const init = () => [ESC, 0x40];
 export const feed = (n) => [ESC, 0x64, n];
-export const cut = () => [GS, 0x56, 0x42, 0x00];
 
 /**
  * Pack a black and white canvas into a GS v 0 raster command.

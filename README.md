@@ -38,7 +38,7 @@ npm run build    # static site in dist/
   dithered to black and white at the size and orientation they are shown. Images can also be pasted or dropped.
 - **PDF**: each page becomes an image: stacked on a roll, one per page on a fixed size.
 - **Menu** (top left): every page size value (name, save as new, delete, width, roll, length, margins,
-  padding, fit roll to its content, reset to the defaults), printer status, cut after page, and the log.
+  padding, fit roll to its content, reset to the defaults), printer status, and the log.
 - The document and the page sizes are saved automatically in this browser (local storage).
 
 ### Page sizes
