@@ -35,8 +35,6 @@ export const ICONS = {
   italic: '<i class="glyph">I</i>',
   underline: '<u class="glyph">U</u>',
   strike: '<s class="glyph">S</s>',
-  smaller: '<span class="glyph">A<small>−</small></span>',
-  larger: '<span class="glyph">A<small>+</small></span>',
 };
 
 export const icon = (name) => ICONS[name] ?? "";

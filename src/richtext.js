@@ -2,8 +2,6 @@
 // Built on the browser's contenteditable and execCommand, plus our own handling where
 // those fall short (px font sizes, any font family, choices made before typing).
 
-import { SIZES, DEFAULT_SIZE } from "./fonts.js";
-
 const MARK_FONT = "bytecintia-font";
 const exec = (name, value = null) => document.execCommand(name, false, value);
 
@@ -182,15 +180,6 @@ export function createRichText({ root, getEditable, onNeedEditor, onChange, onSe
   const setFont = (family) => choose({ family });
   const setSize = (px) => choose({ size: px });
 
-  function stepSize(direction) {
-    if (!restore()) return;
-    const current = state()?.size ?? DEFAULT_SIZE;
-    const next = direction > 0
-      ? SIZES.find((s) => s > current) ?? SIZES.at(-1)
-      : [...SIZES].reverse().find((s) => s < current) ?? SIZES[0];
-    setSize(next);
-  }
-
   // Tidy up any element the browser marked for us after a keystroke.
   const afterInput = () => {
     if (root.querySelector(MARKED)) convertMarkers();
@@ -223,5 +212,5 @@ export function createRichText({ root, getEditable, onNeedEditor, onChange, onSe
     exec("insertText", e.clipboardData.getData("text/plain")); // plain text only
   });
 
-  return { command, setFont, setSize, stepSize, state, afterInput };
+  return { command, setFont, setSize, state, afterInput };
 }

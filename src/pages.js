@@ -11,7 +11,7 @@ import { icon } from "./icons.js";
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSelection, onDropImages, onGrow, onResized }) {
+export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSelection, onDropImages, onFit }) {
   let model = []; // [{ items: [...] }]
   let views = []; // per page: the DOM around it
   const els = new Map(); // item id -> element
@@ -37,9 +37,6 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
     return bottom ? bottom + mmToDots(getPreset().padding.bottom) : 0;
   }
 
-  // An item that does not fit on its page asks for a longer page: onGrow gets how far down
-  // (in dots, including the bottom padding) the page needs to reach.
-  const needRoom = (item) => onGrow(item.y + itemHeight(item) + mmToDots(getPreset().padding.bottom));
   const pageOf = (item) => model.findIndex((p) => p.items.includes(item));
 
   function makeEl(item) {
@@ -199,7 +196,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
     const item = { id: newId(), type: "text", x, y, w, h: 0, html: "<div><br></div>" };
     model[pageIndex].items.push(item);
     views[pageIndex].page.append(makeEl(item));
-    needRoom(item);
+    onFit();
     layout();
     select(item, pageIndex);
     startEdit(item);
@@ -212,7 +209,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
     const item = { id: newId(), type: "image", x, y, w, h, ratio: h / w, angle, orig, src: baked.src, bw: baked.bw, bh: baked.bh };
     model[pageIndex].items.push(item);
     views[pageIndex].page.append(makeEl(item));
-    needRoom(item);
+    onFit();
     layout();
     select(item, pageIndex);
     onChange();
@@ -227,6 +224,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
     els.delete(item.id);
     if (editing === item) editing = null;
     if (selected?.item === item) selected = null;
+    onFit();
     layout();
     onSelection(selected?.item ?? null);
   }
@@ -306,7 +304,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
     if (!editing) return;
     const content = contentOf(editing);
     if (content) editing.html = content.innerHTML;
-    needRoom(editing); // typing more lines than fit makes the page longer
+    onFit(); // the page follows the text as it grows or shrinks
     layout();
   }
 
@@ -347,7 +345,10 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
         layout();
       },
       end() {
-        if (moved) onChange();
+        if (moved) {
+          onFit();
+          onChange();
+        }
       },
     };
   }
@@ -385,7 +386,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
           layout();
         },
         end() {
-          onResized();
+          onFit();
           onChange();
         },
       };
@@ -418,7 +419,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
       },
       async end() {
         await scaleImage(item, k);
-        onResized();
+        onFit();
         onChange();
       },
     };
@@ -440,7 +441,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
     item.x = clamp(item.x, 0, Math.max(0, width - item.bw));
     applyItem(item);
     layout();
-    onResized();
+    onFit();
     onChange();
   }
 
@@ -473,7 +474,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
     item.x = clamp(item.x, 0, Math.max(0, width - item.bw));
     applyItem(item);
     layout();
-    onResized();
+    onFit();
     onChange();
   }
 
@@ -491,7 +492,7 @@ export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSe
     item.x = left;
     if (mode === "page") item.y = top;
     await scaleImage(item, k);
-    onResized();
+    onFit();
     onChange();
   }
 

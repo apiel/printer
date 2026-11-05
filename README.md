@@ -48,6 +48,12 @@ printed around the page, so printing starts that far in: with a width of 210 and
 the first dot of the page is printed 10 mm from the edge, and the print is 210 + margins wide. Margins
 are not shown on screen. **Padding** is the space new items keep from the page edge (the faint dashed line).
 
+**The page follows its content.** After anything is added, moved, resized, edited or deleted, the page
+becomes as long as its content needs: empty space under it goes, and it grows to include anything moved
+out of bounds. A length you set by hand (typing it, or dragging a roll's end, which can cut content off)
+applies once; the next change hands control back to the automatic fit. With several pages the length is
+shared and is only ever made longer.
+
 Everything is measured in printer dots (8 per mm, 203 dpi). Each page is rendered to a bitmap, the
 margins are added around it, and it is sent as a raster image (padded to a multiple of 8 dots wide), so
 match the width and margins to your paper and printer; this printer ignores ESC/POS text.

@@ -22,6 +22,7 @@ const state = {
   roll: { length: mmToDots(ROLL_MIN_MM), crop: false },
   lockRatio: true, // image width and height keep their proportions
   busy: false,
+  importing: false, // a PDF is being laid out: the page does not re-fit meanwhile
 };
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -83,8 +84,7 @@ const pages = createPages({
   onChange: changed,
   onSelection: (item) => updateToolbar(item),
   onDropImages: (files, pageIndex, at) => files.forEach((f) => addImageFile(f, pageIndex, at)),
-  onGrow: growPage,
-  onResized: fitPageToContent,
+  onFit: fitPageToContent,
 });
 
 const rich = createRichText({
@@ -105,31 +105,21 @@ const rich = createRichText({
   onImageFiles: (files) => files.forEach((f) => addImageFile(f)),
 });
 
-// An item does not fit on the page: make the page longer (grow only, never shrink). A fixed
-// size gets a longer length (saved with the page size); a cropped roll gets longer.
-function growPage(bottomDots) {
-  const p = preset();
-  if (p.lengthMm) {
-    const needed = Math.ceil(dotsToMm(bottomDots) * 2) / 2; // whole half millimetres
-    if (needed <= p.lengthMm) return;
-    p.lengthMm = needed;
-    persistPresets();
-    fillPresetForm(p);
-  } else if (state.roll.crop && bottomDots > state.roll.length) {
-    state.roll = { ...state.roll, length: bottomDots };
-  }
-}
-
-// After an item was resized, remove the empty space under the content: the page becomes as
-// long as its content needs. A roll goes back to automatic length; a fixed size gets a
-// shorter (or longer) length, saved with the page size.
+// The page follows its content. After anything is added, moved, resized, edited or deleted, the
+// page becomes as long as its content needs (empty space under it goes, and it grows to include
+// anything moved out of bounds). A size set by hand (typing a length, dragging a roll's end)
+// applies once: the next change hands control back to this. A roll goes back to automatic length;
+// a fixed size gets a new length, saved with the page size.
 function fitPageToContent() {
+  if (state.importing) return; // a PDF import lays its pages out itself
   const bottom = pages.contentBottom();
   if (!bottom) return; // nothing on the page: leave it alone
   const p = preset();
   if (p.lengthMm) {
     const mm = Math.max(1, Math.ceil(dotsToMm(bottom) * 2) / 2);
-    if (mm === p.lengthMm) return;
+    // With several pages the length is shared, so never shorten it: only make it longer for
+    // content that does not fit.
+    if (mm === p.lengthMm || (pages.count() > 1 && mm < p.lengthMm)) return;
     p.lengthMm = mm;
     persistPresets();
     fillPresetForm(p);
@@ -197,6 +187,15 @@ async function addImageFile(file, pageIndex = pages.currentIndex(), at) {
 // Each PDF page becomes an image. On a roll they are stacked; on a fixed size every
 // PDF page gets a page of its own, scaled down to fit.
 async function importPdf(file) {
+  state.importing = true;
+  try {
+    await importPdfPages(file);
+  } finally {
+    state.importing = false;
+  }
+}
+
+async function importPdfPages(file) {
   const p = preset();
   const canvases = await readPdfPages(file, contentWidth());
   log(`PDF: ${canvases.length} page(s).`);
@@ -281,8 +280,6 @@ function bindToolbar() {
   for (const s of SIZES) $("size").append(new Option(String(s), s));
   $("font").addEventListener("change", (e) => rich.setFont(e.target.value));
   $("size").addEventListener("change", (e) => rich.setSize(Number(e.target.value)));
-  $("size-down").addEventListener("click", () => rich.stepSize(-1));
-  $("size-up").addEventListener("click", () => rich.stepSize(1));
   document.querySelectorAll("[data-cmd]").forEach((b) => b.addEventListener("click", () => rich.command(b.dataset.cmd)));
 
   // image
