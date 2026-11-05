@@ -1,4 +1,4 @@
-# Bytecintia Printer (web app)
+# Thermal Printer (web app)
 
 A small layout tool that prints to a Bluetooth LE thermal printer using Web Bluetooth.
 Place text boxes, images and PDF pages anywhere on the page, then print. Everything prints
@@ -60,8 +60,13 @@ match the width and margins to your paper and printer; this printer ignores ESC/
 
 ## Deploy on GitHub Pages
 
-Build with `npm run build` and publish the `dist/` folder, or add a workflow that does it.
-`vite.config.js` uses a relative base, so it works under `https://<user>.github.io/<repo>/`.
+The site is published by a GitHub Actions workflow (`.github/workflows/pages.yml`): every push to
+`main` builds it and deploys it to GitHub Pages. To publish your own copy, fork or push this repo to
+GitHub, then in **Settings → Pages** set **Source** to **GitHub Actions**. It will be at
+`https://<user>.github.io/<repo>/`.
+
+`vite.config.js` uses a relative base, so the same build also works from any sub-path or a local folder
+server. Web Bluetooth needs HTTPS, which GitHub Pages provides.
 
 ## Files
 
