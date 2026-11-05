@@ -25,9 +25,9 @@
          as the tallest one and nothing below it moves when the selection changes. -->
     <div class="toolbox">
       <div class="tools active" data-ctx="page">
-        <label class="mini" title="Page width">Width <input data-pg="width" type="number" min="10" step="1"> mm</label>
+        <label class="mini" title="Page width">Width <input data-pg="width" type="number" min="1" step="1"> mm</label>
         <label class="mini" title="An endless roll"><input data-pg="roll" type="checkbox"> Roll</label>
-        <label class="mini" title="Page length">Length <input data-pg="length" type="number" min="10" step="1"> mm</label>
+        <label class="mini" title="Page length">Length <input data-pg="length" type="number" min="1" step="1"> mm</label>
         <span class="sep"></span>
         <label class="mini" title="Blank space printed to the left of the page: printing starts this far in">Margin left <input data-pg="ml" class="tiny" type="number" min="0" step="0.5"> mm</label>
         <label class="mini" title="Blank space printed to the right of the page">right <input data-pg="mr" class="tiny" type="number" min="0" step="0.5"> mm</label>
@@ -94,9 +94,9 @@
         <button id="pg-new" title="Save a copy of this size under a new name"><span data-icon="copy"></span>Save as new</button>
         <button id="pg-delete" class="danger" title="Delete this page size"><span data-icon="trash"></span>Delete</button>
       </div>
-      <div class="field"><label for="pg-width">Width (mm)</label><input id="pg-width" data-pg="width" type="number" min="10" step="1"></div>
+      <div class="field"><label for="pg-width">Width (mm)</label><input id="pg-width" data-pg="width" type="number" min="1" step="1"></div>
       <div class="field"><label for="pg-roll">Endless roll</label><input id="pg-roll" data-pg="roll" type="checkbox"></div>
-      <div class="field"><label for="pg-length">Length (mm)</label><input id="pg-length" data-pg="length" type="number" min="10" step="1"></div>
+      <div class="field"><label for="pg-length">Length (mm)</label><input id="pg-length" data-pg="length" type="number" min="1" step="1"></div>
       <div class="field"><span>Margins (mm)</span>
         <div class="quad">
           <label>Left<input data-pg="ml" type="number" min="0" step="0.5"></label>

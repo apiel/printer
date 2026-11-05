@@ -18,7 +18,9 @@ const PREFS_KEY = "bytecintia.prefs";
 const state = {
   presets: [],
   presetId: null,
-  minLength: mmToDots(ROLL_MIN_MM), // a roll is never shorter than this (dots)
+  // A roll's length (dots). Automatic: it grows with its content and is at least this long.
+  // Cropped (after dragging its end): exactly this long, whatever is below is cut off.
+  roll: { length: mmToDots(ROLL_MIN_MM), crop: false },
   prefs: { cut: false },
   lockRatio: true, // image width and height keep their proportions
   busy: false,
@@ -80,7 +82,7 @@ let saveTimer = null;
 
 function saveNow() {
   clearTimeout(saveTimer);
-  const ok = saveDoc({ presetId: state.presetId, minLength: state.minLength, pages: pages.getModel() });
+  const ok = saveDoc({ presetId: state.presetId, minLength: state.roll.length, cropRoll: state.roll.crop, pages: pages.getModel() });
   if (!ok) toast("Could not save: browser storage is full (large images or PDFs).");
 }
 
@@ -95,8 +97,8 @@ function changed() {
 const pages = createPages({
   stage,
   getPreset: preset,
-  getMinLength: () => state.minLength,
-  setMinLength: (v) => (state.minLength = v),
+  getRoll: () => state.roll,
+  setRoll: (roll) => (state.roll = roll),
   onChange: changed,
   onSelection: (item) => updateToolbar(item),
   onDropImages: (files, pageIndex, at) => files.forEach((f) => addImageFile(f, pageIndex, at)),
@@ -368,8 +370,8 @@ function readPresetForm() {
   const roll = pgFields("roll")[0].checked;
   return {
     name: pgFields("name")[0].value.trim() || "Untitled",
-    widthMm: Math.max(10, num("width")),
-    lengthMm: roll ? null : Math.max(10, num("length")),
+    widthMm: Math.max(1, num("width")),
+    lengthMm: roll ? null : Math.max(1, num("length")),
     margins: { left: num("ml"), right: num("mr"), top: roll ? 0 : num("mt"), bottom: roll ? 0 : num("mb") },
     padding: { left: num("pl"), right: num("pr"), top: num("pt"), bottom: num("pb") },
   };
@@ -431,7 +433,7 @@ function bindPresets() {
     applyPreset(state.presets[0].id);
   });
   $("pg-fit").addEventListener("click", () => {
-    state.minLength = 0;
+    state.roll = { length: 0, crop: false };
     changed();
   });
   $("pr-reset").addEventListener("click", () => {
@@ -456,7 +458,7 @@ function boot() {
   state.presets = loadPresets();
   const saved = loadDoc();
   state.presetId = saved && state.presets.some((p) => p.id === saved.presetId) ? saved.presetId : state.presets[0].id;
-  state.minLength = saved?.minLength ?? state.minLength;
+  state.roll = { length: saved?.minLength ?? state.roll.length, crop: !!saved?.cropRoll };
 
   const model = saved?.pages?.length ? saved.pages : [{ items: [] }];
   // Text boxes converted from an older version have no width yet: let them fill the page.

@@ -11,7 +11,7 @@ import { icon } from "./icons.js";
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-export function createPages({ stage, getPreset, getMinLength, setMinLength, onChange, onSelection, onDropImages }) {
+export function createPages({ stage, getPreset, getRoll, setRoll, onChange, onSelection, onDropImages }) {
   let model = []; // [{ items: [...] }]
   let views = []; // per page: the DOM around it
   const els = new Map(); // item id -> element
@@ -86,7 +86,7 @@ export function createPages({ stage, getPreset, getMinLength, setMinLength, onCh
     const lenHandle = document.createElement("div");
     lenHandle.className = "len-handle ui";
     lenHandle.dataset.handle = "length";
-    lenHandle.title = "Drag to change the minimum length";
+    lenHandle.title = "Drag to set the length (content below it is cropped)";
     const hint = document.createElement("div");
     hint.className = "empty-hint ui";
     hint.textContent = "Add a text box or an image from the toolbar";
@@ -125,11 +125,13 @@ export function createPages({ stage, getPreset, getMinLength, setMinLength, onCh
         // A roll grows with its content (plus the bottom padding), never below its minimum length.
         let bottom = 0;
         for (const it of pg.items) bottom = Math.max(bottom, it.y + itemHeight(it));
-        height = Math.max(8, getMinLength(), bottom + mmToDots(p.padding.bottom));
+        const { length, crop } = getRoll();
+        // Automatic: as long as the content (plus padding), at least `length`. Cropped: exactly `length`.
+        height = crop ? Math.max(8, length) : Math.max(8, length, bottom + mmToDots(p.padding.bottom));
       } else {
         height = mmToDots(pageLengthMm(p));
       }
-      Object.assign(v.page.style, { width: `${width}px`, height: `${height}px`, overflow: roll ? "visible" : "hidden" });
+      Object.assign(v.page.style, { width: `${width}px`, height: `${height}px`, overflow: roll && !getRoll().crop ? "visible" : "hidden" });
       Object.assign(v.zoomer.style, { width: `${width}px`, height: `${height}px`, transform: `scale(${zoom})` });
       v.zoomer.style.setProperty("--inv", String(1 / zoom)); // keeps handles and borders a constant size
       Object.assign(v.sizer.style, { width: `${width * zoom}px`, height: `${height * zoom}px` });
@@ -469,7 +471,7 @@ export function createPages({ stage, getPreset, getMinLength, setMinLength, onCh
     e.target.setPointerCapture(e.pointerId);
     drag = {
       move(ev) {
-        setMinLength(Math.max(0, Math.round(startH + (ev.clientY - startY) / zoom)));
+        setRoll({ length: Math.max(0, Math.round(startH + (ev.clientY - startY) / zoom)), crop: true });
         layout();
       },
       end: () => onChange(),
