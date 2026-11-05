@@ -4,92 +4,119 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Bytecintia Printer</title>
-  <style>
-    :root { color-scheme: light dark; --gap: 16px; }
-    body { font-family: system-ui, sans-serif; margin: 0; padding: var(--gap); max-width: 640px; margin-inline: auto; }
-    h1 { font-size: 1.4rem; margin: 0 0 var(--gap); }
-    section { border: 1px solid #8884; border-radius: 10px; padding: var(--gap); margin-bottom: var(--gap); }
-    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
-    button { padding: 10px 14px; border-radius: 8px; border: 1px solid #8886; background: #2563eb; color: #fff; font-size: 1rem; cursor: pointer; }
-    button.secondary { background: transparent; color: inherit; }
-    button:disabled { opacity: .45; cursor: not-allowed; }
-    textarea { width: 100%; min-height: 90px; box-sizing: border-box; font: inherit; padding: 8px; border-radius: 8px; border: 1px solid #8886; }
-    select, input[type=file] { font: inherit; }
-    #status { font-weight: 600; }
-    #log { font-family: ui-monospace, monospace; font-size: .8rem; white-space: pre-wrap; background: #8881; border-radius: 8px; padding: 8px; min-height: 120px; max-height: 260px; overflow: auto; }
-  </style>
+  <link rel="stylesheet" href="./src/style.css">
 </head>
 <body>
-  <h1>Bytecintia Printer</h1>
-
-  <section>
-    <div class="row">
+  <header class="toolbar">
+    <div class="group">
       <button id="connect">Connect</button>
-      <span id="status">Not connected</span>
+      <span id="status" class="muted">Not connected</span>
     </div>
-    <p style="font-size:.85rem;opacity:.75;margin:4px 0 0">
-      Turn on the printer first, then press Connect and pick it from the list.
-    </p>
-  </section>
 
-  <section>
-    <h2 style="font-size:1.1rem;margin-top:0">Text</h2>
-    <textarea id="message" placeholder="Type something to print (plain ASCII works best)"></textarea>
-    <div class="row">
-      <label>Align
-        <select id="align">
-          <option value="0">Left</option>
-          <option value="1">Center</option>
-          <option value="2">Right</option>
-        </select>
-      </label>
-      <label><input type="checkbox" id="bold"> Bold</label>
-      <label><input type="checkbox" id="cut"> Cut after print</label>
+    <div class="group">
+      <label>Page <select id="preset"></select></label>
     </div>
-    <div class="row">
-      <button data-needs-printer id="print-text" disabled>Print text</button>
-      <button data-needs-printer id="print-test" class="secondary" disabled>Print test page</button>
-      <button data-needs-printer id="print-raster" class="secondary" disabled>Print raster test</button>
-    </div>
-  </section>
 
-  <section>
-    <h2 style="font-size:1.1rem;margin-top:0">Image</h2>
-    <div class="row">
-      <input type="file" id="image" accept="image/*">
+    <div class="group">
+      <button data-tool="select" class="active" title="Select and move items">Select</button>
+      <button id="add-text" title="Add a text block">+ Text</button>
+      <button id="add-image" title="Add an image">+ Image</button>
+      <button data-tool="line" title="Drag on the page to draw a line">Line</button>
+      <button id="import-pdf" title="Import a PDF">PDF…</button>
+      <button id="delete-item" title="Delete the selected item">Delete</button>
     </div>
-    <div class="row">
-      <button data-needs-printer id="print-image" disabled>Print image</button>
-    </div>
-  </section>
 
-  <section>
-    <h2 style="font-size:1.1rem;margin-top:0">Paper and margins</h2>
-    <div class="row">
-      <label>Paper
-        <select id="paper">
-          <option value="384">58 mm (384 px)</option>
-          <option value="576">80 mm (576 px)</option>
-        </select>
-      </label>
+    <div class="group" id="page-nav">
+      <button id="prev-page">◀</button>
+      <span id="page-label" class="muted">Page 1 / 1</span>
+      <button id="next-page">▶</button>
+      <button id="add-page">+ Page</button>
+      <button id="remove-page">Remove page</button>
     </div>
-    <div class="row">
-      <label>Left margin <input type="number" id="margin-left" min="0" max="200" step="1" style="width:5em"> px</label>
-      <label>Right margin <input type="number" id="margin-right" min="0" max="200" step="1" style="width:5em"> px</label>
-    </div>
-    <p style="font-size:.85rem;opacity:.75;margin:4px 0 0">
-      Adjust the margins until text lines up with the paper edge. Saved in this browser.
-    </p>
-  </section>
 
-  <section>
-    <div class="row" style="justify-content:space-between">
-      <strong>Log</strong>
-      <button id="clear-log" class="secondary">Clear</button>
+    <div class="group push-right">
+      <button id="print" class="primary" data-needs-printer disabled>Print</button>
     </div>
-    <div id="log"></div>
-  </section>
+  </header>
 
-  <script type="module" src="app.js"></script>
+  <main class="layout">
+    <section class="stage" id="stage">
+      <div id="sheet" class="sheet">
+        <canvas id="page-canvas"></canvas>
+        <div id="margin-guide" class="margin-guide"></div>
+        <div id="sel" class="sel hidden"><div id="handle-se" class="handle" title="Drag to resize"></div></div>
+        <div id="len-handle" class="len-handle" title="Drag to change the minimum length"></div>
+      </div>
+    </section>
+
+    <aside class="side">
+      <div class="card">
+        <h2>Selected item</h2>
+        <p id="no-selection" class="muted">Click an item on the page to edit it.</p>
+        <div id="fields" class="hidden">
+          <div class="field"><label for="p-x">X (mm)</label><input id="p-x" type="number" step="0.5"></div>
+          <div class="field"><label for="p-y">Y (mm)</label><input id="p-y" type="number" step="0.5"></div>
+          <div class="field" data-for="text image line"><label for="p-w">Width (mm)</label><input id="p-w" type="number" step="0.5" min="1"></div>
+          <div class="field" data-for="image"><label for="p-h">Height (mm)</label><input id="p-h" type="number" step="0.5" min="1"></div>
+          <div class="field" data-for="line"><label for="p-thick">Thickness (dots)</label><input id="p-thick" type="number" min="1" max="60"></div>
+          <div class="field" data-for="text"><label for="p-text">Text</label><textarea id="p-text"></textarea></div>
+          <div class="field" data-for="text"><label for="p-size">Size (dots)</label><input id="p-size" type="number" min="8" max="200"></div>
+          <div class="field" data-for="text"><label for="p-bold">Bold</label><input id="p-bold" type="checkbox"></div>
+          <div class="field" data-for="text"><label for="p-align">Align</label>
+            <select id="p-align">
+              <option value="0">Left</option>
+              <option value="1">Center</option>
+              <option value="2">Right</option>
+            </select>
+          </div>
+          <button id="p-delete" class="danger">Delete item</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Page sizes</h2>
+        <p id="page-info" class="muted"></p>
+        <div class="field"><label for="pr-name">Name</label><input id="pr-name" type="text"></div>
+        <div class="field"><label for="pr-width">Width (mm)</label><input id="pr-width" type="number" min="10" step="1"></div>
+        <div class="field"><label for="pr-roll">Endless roll</label><input id="pr-roll" type="checkbox"></div>
+        <div class="field"><label for="pr-length">Length (mm)</label><input id="pr-length" type="number" min="10" step="1"></div>
+        <div class="field"><label for="pr-ml">Left margin (mm)</label><input id="pr-ml" type="number" min="0" step="0.5"></div>
+        <div class="field"><label for="pr-mr">Right margin (mm)</label><input id="pr-mr" type="number" min="0" step="0.5"></div>
+        <div class="field"><label for="pr-mt">Top margin (mm)</label><input id="pr-mt" type="number" min="0" step="0.5"></div>
+        <div class="field"><label for="pr-mb">Bottom margin (mm)</label><input id="pr-mb" type="number" min="0" step="0.5"></div>
+        <div class="row">
+          <button id="pr-update">Update this size</button>
+          <button id="pr-new">Save as new</button>
+          <button id="pr-delete" class="danger">Delete</button>
+        </div>
+        <div class="row">
+          <button id="pr-a4" class="ghost">Fill A4</button>
+          <button id="pr-reset" class="ghost">Reset to defaults</button>
+        </div>
+        <p class="muted">Width is the printable width: 48 mm for a 58 mm roll.</p>
+      </div>
+
+      <div class="card">
+        <h2>Printer</h2>
+        <div class="field"><label for="head">Head width</label>
+          <select id="head">
+            <option value="384">58 mm printer (384 dots)</option>
+            <option value="576">80 mm printer (576 dots)</option>
+          </select>
+        </div>
+        <div class="field"><label for="cut">Cut after page</label><input id="cut" type="checkbox"></div>
+        <p class="muted">Pages wider than the printer head are scaled down to fit.</p>
+      </div>
+
+      <div class="card">
+        <div class="row between"><h2>Log</h2><button id="clear-log" class="ghost">Clear</button></div>
+        <div id="log"></div>
+      </div>
+    </aside>
+  </main>
+
+  <input type="file" id="file-image" accept="image/*" hidden>
+  <input type="file" id="file-pdf" accept="application/pdf" hidden>
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>
