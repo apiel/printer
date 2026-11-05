@@ -48,9 +48,20 @@ export function toBlackWhite(src, dither, keepAlpha = false) {
   return out;
 }
 
+/** The page with blank margins (dots) around it: this is how far in printing starts. */
+export function addMargins(pageCanvas, { left, top, right, bottom }) {
+  if (!left && !top && !right && !bottom) return pageCanvas;
+  const out = newCanvas(left + pageCanvas.width + right, top + pageCanvas.height + bottom);
+  const ctx = out.getContext("2d");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(pageCanvas, left, top);
+  return out;
+}
+
 /**
  * Prepare a rendered page for the printer: pure black and white, as wide as the page.
- * The printer needs a width that is a multiple of 8 dots, so the page is padded with
+ * The printer needs a width that is a multiple of 8 dots, so it is padded with
  * white on the right when it is not.
  */
 export function toPrintBitmap(pageCanvas) {

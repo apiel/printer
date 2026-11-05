@@ -5,7 +5,7 @@
 // Positions and sizes are in printer dots. The sheets are scaled on screen to fit.
 
 import { mmToDots, newId } from "./units.js";
-import { printableLengthMm, pageWidthDots } from "./presets.js";
+import { pageLengthMm, pageWidthDots } from "./presets.js";
 import { bakeImage } from "./bitmap.js";
 import { icon } from "./icons.js";
 
@@ -127,7 +127,7 @@ export function createPages({ stage, getPreset, getMinLength, setMinLength, onCh
         for (const it of pg.items) bottom = Math.max(bottom, it.y + itemHeight(it));
         height = Math.max(8, getMinLength(), bottom + mmToDots(p.padding.bottom));
       } else {
-        height = mmToDots(printableLengthMm(p));
+        height = mmToDots(pageLengthMm(p));
       }
       Object.assign(v.page.style, { width: `${width}px`, height: `${height}px`, overflow: roll ? "visible" : "hidden" });
       Object.assign(v.zoomer.style, { width: `${width}px`, height: `${height}px`, transform: `scale(${zoom})` });
@@ -454,7 +454,7 @@ export function createPages({ stage, getPreset, getMinLength, setMinLength, onCh
     const top = mmToDots(p.padding.top);
     let k = (pageWidthDots(p) - left - mmToDots(p.padding.right)) / item.bw;
     if (mode === "page" && p.lengthMm) {
-      k = Math.min(k, (mmToDots(printableLengthMm(p)) - top - mmToDots(p.padding.bottom)) / item.bh);
+      k = Math.min(k, (mmToDots(pageLengthMm(p)) - top - mmToDots(p.padding.bottom)) / item.bh);
     }
     item.x = left;
     if (mode === "page") item.y = top;

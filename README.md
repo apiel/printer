@@ -27,7 +27,8 @@ npm run build    # static site in dist/
 - **Toolbox** (the strip under the toolbar). It shows the tools for what is selected, and is always
   the same height, so the page never jumps:
   - **Nothing selected: the page.** Width, Roll, length and the left and right margins. The page size
-    itself is picked in the top bar. Changes apply straight away and are saved.
+    itself is picked in the top bar. Changes apply straight away and are saved. (All the page size
+    values, including the top and bottom margins and the padding, are in the menu too, and the two stay in sync.)
   - **A text box:** font, size, bold, italic, underline, strikethrough, alignment, lists, undo/redo.
     Pressing a control with the box only selected formats all of its text.
   - **An image or PDF page:** width and height in mm (the lock keeps the proportions), turn left or
@@ -36,19 +37,20 @@ npm run build    # static site in dist/
 - **Image**: drag to move, drag any corner to resize (the opposite corner stays put). Images are
   dithered to black and white at the size and orientation they are shown. Images can also be pasted or dropped.
 - **PDF**: each page becomes an image: stacked on a roll, one per page on a fixed size.
-- **Menu** (top left): printer status, cut after page, the rest of the page size settings (name, save as
-  new, delete, top and bottom margins, padding, fit roll to its content, reset to the defaults), and the log.
+- **Menu** (top left): every page size value (name, save as new, delete, width, roll, length, margins,
+  padding, fit roll to its content, reset to the defaults), printer status, cut after page, and the log.
 - The document and the page sizes are saved automatically in this browser (local storage).
 
 ### Page sizes
 
-Width and length are the paper size. **Margins** are the edge the printer cannot reach: they are not
-part of the page and are not printed (a 58 mm roll with 5 mm margins gives a 48 mm page). **Padding**
-is the space new items keep from the edge (the faint dashed line).
+**Width** and **length** are the page you design on, exactly as typed. **Margins** are blank space
+printed around the page, so printing starts that far in: with a width of 210 and a left margin of 10,
+the first dot of the page is printed 10 mm from the edge, and the print is 210 + margins wide. Margins
+are not shown on screen. **Padding** is the space new items keep from the page edge (the faint dashed line).
 
-Everything is measured in printer dots (8 per mm, 203 dpi). Each page is rendered to a bitmap and sent
-as a raster image at its own width (padded to a multiple of 8 dots), so set the page size to match your
-paper and printer; this printer ignores ESC/POS text.
+Everything is measured in printer dots (8 per mm, 203 dpi). Each page is rendered to a bitmap, the
+margins are added around it, and it is sent as a raster image (padded to a multiple of 8 dots wide), so
+match the width and margins to your paper and printer; this printer ignores ESC/POS text.
 
 ## Deploy on GitHub Pages
 

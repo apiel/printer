@@ -25,12 +25,12 @@
          as the tallest one and nothing below it moves when the selection changes. -->
     <div class="toolbox">
       <div class="tools active" data-ctx="page">
-        <label class="mini" title="Paper width">Width <input id="pg-width" type="number" min="10" step="1"> mm</label>
-        <label class="mini" title="An endless roll"><input id="pg-roll" type="checkbox"> Roll</label>
-        <label class="mini" title="Paper length">Length <input id="pg-length" type="number" min="10" step="1"> mm</label>
+        <label class="mini" title="Page width">Width <input data-pg="width" type="number" min="10" step="1"> mm</label>
+        <label class="mini" title="An endless roll"><input data-pg="roll" type="checkbox"> Roll</label>
+        <label class="mini" title="Page length">Length <input data-pg="length" type="number" min="10" step="1"> mm</label>
         <span class="sep"></span>
-        <label class="mini" title="The edge the printer cannot reach on the left: not part of the page">Margin left <input id="pg-ml" class="tiny" type="number" min="0" step="0.5"> mm</label>
-        <label class="mini" title="The edge the printer cannot reach on the right: not part of the page">right <input id="pg-mr" class="tiny" type="number" min="0" step="0.5"> mm</label>
+        <label class="mini" title="Blank space printed to the left of the page: printing starts this far in">Margin left <input data-pg="ml" class="tiny" type="number" min="0" step="0.5"> mm</label>
+        <label class="mini" title="Blank space printed to the right of the page">right <input data-pg="mr" class="tiny" type="number" min="0" step="0.5"> mm</label>
       </div>
 
       <div class="tools" data-ctx="text">
@@ -83,34 +83,40 @@
       <h2>Printer</h2>
       <p id="printer-status" class="muted">Not connected</p>
       <div class="field"><label for="cut">Cut after page</label><input id="cut" type="checkbox"></div>
-      <p class="muted">Each page prints at its own width, so set the page size to match your paper.</p>
+      <p class="muted">Each page prints at its width plus its margins, so match them to your paper and printer.</p>
     </div>
 
     <div class="card">
       <h2>Page size</h2>
-      <p class="muted">Pick the size in the top bar. Width, length and the left and right margins are in the strip below it when nothing is selected. The rest is here.</p>
-      <div class="field"><label for="pg-name">Name</label><input id="pg-name" type="text"></div>
+      <p class="muted">Pick the size in the top bar. The basics are also in the strip below it when nothing is selected.</p>
+      <div class="field"><label for="pg-name">Name</label><input id="pg-name" data-pg="name" type="text"></div>
       <div class="row">
         <button id="pg-new" title="Save a copy of this size under a new name"><span data-icon="copy"></span>Save as new</button>
         <button id="pg-delete" class="danger" title="Delete this page size"><span data-icon="trash"></span>Delete</button>
       </div>
-      <div class="field"><span>Margins top / bottom (mm)</span>
-        <div class="duo">
-          <input id="pg-mt" type="number" min="0" step="0.5" aria-label="Top margin">
-          <input id="pg-mb" type="number" min="0" step="0.5" aria-label="Bottom margin">
+      <div class="field"><label for="pg-width">Width (mm)</label><input id="pg-width" data-pg="width" type="number" min="10" step="1"></div>
+      <div class="field"><label for="pg-roll">Endless roll</label><input id="pg-roll" data-pg="roll" type="checkbox"></div>
+      <div class="field"><label for="pg-length">Length (mm)</label><input id="pg-length" data-pg="length" type="number" min="10" step="1"></div>
+      <div class="field"><span>Margins (mm)</span>
+        <div class="quad">
+          <label>Left<input data-pg="ml" type="number" min="0" step="0.5"></label>
+          <label>Top<input data-pg="mt" type="number" min="0" step="0.5"></label>
+          <label>Right<input data-pg="mr" type="number" min="0" step="0.5"></label>
+          <label>Bottom<input data-pg="mb" type="number" min="0" step="0.5"></label>
         </div>
       </div>
       <div class="field"><span>Padding (mm)</span>
         <div class="quad">
-          <label>Left<input id="pg-pl" type="number" min="0" step="0.5"></label>
-          <label>Top<input id="pg-pt" type="number" min="0" step="0.5"></label>
-          <label>Right<input id="pg-pr" type="number" min="0" step="0.5"></label>
-          <label>Bottom<input id="pg-pb" type="number" min="0" step="0.5"></label>
+          <label>Left<input data-pg="pl" type="number" min="0" step="0.5"></label>
+          <label>Top<input data-pg="pt" type="number" min="0" step="0.5"></label>
+          <label>Right<input data-pg="pr" type="number" min="0" step="0.5"></label>
+          <label>Bottom<input data-pg="pb" type="number" min="0" step="0.5"></label>
         </div>
       </div>
       <div class="row"><button id="pg-fit"><span data-icon="fitHeight"></span>Fit roll to its content</button></div>
-      <p class="muted"><b>Margins</b> are the edge the printer cannot reach: they are not part of the page and are not printed
-        (a 58 mm roll with 5 mm margins gives a 48 mm page). <b>Padding</b> is the space new items keep from the edge
+      <p class="muted"><b>Margins</b> are blank space printed around the page, so printing starts that far in:
+        with a width of 210 and a left margin of 10, the first dot of the page is printed 10 mm from the edge
+        (they are not shown on screen). <b>Padding</b> is the space new items keep from the page edge
         (the faint dashed line).</p>
       <div class="row"><button id="pr-reset" class="ghost">Reset all page sizes to the defaults</button></div>
     </div>

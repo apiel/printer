@@ -1,43 +1,56 @@
-// Page presets, all in mm:
-//   widthMm / lengthMm  the paper size (lengthMm null = endless roll)
-//   margins             the unprintable edge of the paper. The editor page and the
-//                       printed output only cover what is inside the margins.
-//   padding             free space kept inside the page when placing new items
-//                       (a guide only; it does not limit where you can put things)
+// Page sizes, all in mm:
+//   widthMm / lengthMm  the page you design on (lengthMm null = endless roll)
+//   margins             blank space added around the page when printing: the first dot of
+//                       the page is printed this far in. Not shown on screen.
+//   padding             space new items keep from the page edge (the dashed line)
+// So width 210 with a 10 mm left margin prints 10 mm of blank, then the 210 mm page.
 
 import { mmToDots } from "./units.js";
 
-const KEY = "bytecintia.presets";
+const KEY = "bytecintia.presets.v2";
+const V1_KEY = "bytecintia.presets"; // margins used to be taken out of the page
 
-// The page is the printable area: the paper minus its unprintable margins.
-export const printableWidthMm = (p) => Math.max(1, p.widthMm - p.margins.left - p.margins.right);
-export const printableLengthMm = (p) =>
-  p.lengthMm ? Math.max(1, p.lengthMm - p.margins.top - p.margins.bottom) : null;
-export const pageWidthDots = (p) => mmToDots(printableWidthMm(p));
+export const pageWidthDots = (p) => mmToDots(p.widthMm);
+export const pageLengthMm = (p) => p.lengthMm || null;
 
 const box = (top, right, bottom, left) => ({ top, right, bottom, left });
 
 export const DEFAULT_PRESETS = [
-  { id: "roll58", name: "58 mm roll", widthMm: 58, lengthMm: null, margins: box(0, 5, 0, 5), padding: box(2, 1, 2, 2) },
-  { id: "roll80", name: "80 mm roll", widthMm: 80, lengthMm: null, margins: box(0, 4, 0, 4), padding: box(2, 1, 2, 2) },
-  { id: "a4", name: "A4 page", widthMm: 210, lengthMm: 297, margins: box(10, 10, 10, 10), padding: box(5, 5, 5, 5) },
-  { id: "label", name: "Label 50 × 30", widthMm: 50, lengthMm: 30, margins: box(2, 2, 2, 2), padding: box(1, 1, 1, 1) },
+  { id: "roll58", name: "58 mm roll", widthMm: 48, lengthMm: null, margins: box(0, 0, 0, 0), padding: box(2, 1, 2, 2) },
+  { id: "roll80", name: "80 mm roll", widthMm: 72, lengthMm: null, margins: box(0, 0, 0, 0), padding: box(2, 1, 2, 2) },
+  { id: "a4", name: "A4 page", widthMm: 210, lengthMm: 297, margins: box(0, 0, 0, 0), padding: box(5, 5, 5, 5) },
+  { id: "label", name: "Label 50 × 30", widthMm: 50, lengthMm: 30, margins: box(0, 0, 0, 0), padding: box(1, 1, 1, 1) },
 ];
 
-// Presets saved by an earlier version had no padding: their "margins" were placement
-// guides and widthMm was the printable width. Keep that layout, as padding.
-function migrate(p) {
-  if (p.padding) return p;
-  return { ...p, padding: { ...p.margins }, margins: box(0, 0, 0, 0) };
+// Presets saved by earlier versions: first ones without padding (their "margins" were
+// placement guides), then ones where the margins were taken out of the width. Keep what
+// was printed: the page becomes the old printable area, with no extra margin.
+function fromOld(p) {
+  let q = p;
+  if (!q.padding) q = { ...q, padding: { ...q.margins }, margins: box(0, 0, 0, 0) };
+  const m = q.margins;
+  return {
+    ...q,
+    widthMm: Math.max(10, q.widthMm - m.left - m.right),
+    lengthMm: q.lengthMm ? Math.max(10, q.lengthMm - m.top - m.bottom) : null,
+    margins: box(0, 0, 0, 0),
+  };
 }
 
-export function loadPresets() {
+const read = (key) => {
   try {
-    const saved = JSON.parse(localStorage.getItem(KEY));
-    if (Array.isArray(saved) && saved.length) return saved.map(migrate);
+    const list = JSON.parse(localStorage.getItem(key));
+    return Array.isArray(list) && list.length ? list : null;
   } catch {
-    // fall through to defaults
+    return null;
   }
+};
+
+export function loadPresets() {
+  const current = read(KEY);
+  if (current) return current;
+  const old = read(V1_KEY);
+  if (old) return old.map(fromOld);
   return structuredClone(DEFAULT_PRESETS);
 }
 

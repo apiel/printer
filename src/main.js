@@ -2,9 +2,9 @@ import { FONTS, SIZES, matchFont } from "./fonts.js";
 import { connect, send, onLog, onChange as onBleChange, isConnected, printerName } from "./ble.js";
 import { init, feed, cut, concat, rasterCommand } from "./escpos.js";
 import { mmToDots, dotsToMm, newId, ROLL_MIN_MM } from "./units.js";
-import { DEFAULT_PRESETS, loadPresets, savePresets, printableLengthMm, pageWidthDots } from "./presets.js";
+import { DEFAULT_PRESETS, loadPresets, savePresets, pageLengthMm, pageWidthDots } from "./presets.js";
 import { loadDoc, saveDoc } from "./storage.js";
-import { toPrintBitmap, fileToCanvas, canvasToJpeg } from "./bitmap.js";
+import { toPrintBitmap, addMargins, fileToCanvas, canvasToJpeg } from "./bitmap.js";
 import { renderPage } from "./render.js";
 import { createRichText } from "./richtext.js";
 import { createPages } from "./pages.js";
@@ -152,7 +152,7 @@ async function importPdf(file) {
   const left = mmToDots(p.padding.left);
   const padTop = mmToDots(p.padding.top);
   const padBottom = mmToDots(p.padding.bottom);
-  const fixedHeight = p.lengthMm ? mmToDots(printableLengthMm(p)) : null;
+  const fixedHeight = p.lengthMm ? mmToDots(pageLengthMm(p)) : null;
 
   for (let i = 0; i < canvases.length; i++) {
     const canvas = canvases[i];
@@ -300,7 +300,13 @@ function refreshAction() {
   $("printer-status").textContent = connected ? `Connected: ${printerName() || "printer"}` : "Not connected";
 }
 
-// Every page is printed at its own width, so the page size should match the paper.
+// Blank space (dots) printed around each page: printing starts this far in.
+function printMargins() {
+  const m = preset().margins;
+  return { left: mmToDots(m.left), top: mmToDots(m.top), right: mmToDots(m.right), bottom: mmToDots(m.bottom) };
+}
+
+// Every page is printed at its own width plus its margins, so match them to your paper.
 async function printDocument() {
   pages.stopEdit();
   const model = pages.getModel();
@@ -308,11 +314,12 @@ async function printDocument() {
 
   const elements = pages.pageElements();
   for (let i = 0; i < elements.length; i++) {
-    const canvas = await renderPage(elements[i]);
+    const page = await renderPage(elements[i]);
+    const canvas = addMargins(page, printMargins());
     const parts = [init(), rasterCommand(toPrintBitmap(canvas)), feed(3)];
     if (state.prefs.cut) parts.push(cut());
     await send(concat(...parts));
-    log(`Printed page ${i + 1} of ${elements.length} (${canvas.width} × ${canvas.height} dots).`);
+    log(`Printed page ${i + 1} of ${elements.length} (${canvas.width} × ${canvas.height} dots, with margins).`);
   }
 }
 
@@ -325,43 +332,46 @@ function fillPresetSelect() {
   select.value = preset().id;
 }
 
+// The page size values appear in the strip under the toolbar (the basics) and in the menu
+// (all of them). Every field is marked data-pg="name", and the copies are kept in sync.
+const pgFields = (name) => [...document.querySelectorAll(`[data-pg="${name}"]`)];
+
+function setPg(name, value) {
+  for (const el of pgFields(name)) if (document.activeElement !== el) el.value = value;
+}
+
 function fillPresetForm(p) {
-  const set = (id, value) => {
-    if (document.activeElement !== $(id)) $(id).value = value;
-  };
-  set("pg-name", p.name);
-  set("pg-width", p.widthMm);
-  $("pg-roll").checked = !p.lengthMm;
-  set("pg-length", p.lengthMm ?? 297);
-  set("pg-ml", p.margins.left);
-  set("pg-mr", p.margins.right);
-  set("pg-mt", p.margins.top);
-  set("pg-mb", p.margins.bottom);
-  set("pg-pl", p.padding.left);
-  set("pg-pr", p.padding.right);
-  set("pg-pt", p.padding.top);
-  set("pg-pb", p.padding.bottom);
+  setPg("name", p.name);
+  setPg("width", p.widthMm);
+  pgFields("roll").forEach((el) => (el.checked = !p.lengthMm));
+  setPg("length", p.lengthMm ?? 297);
+  setPg("ml", p.margins.left);
+  setPg("mr", p.margins.right);
+  setPg("mt", p.margins.top);
+  setPg("mb", p.margins.bottom);
+  setPg("pl", p.padding.left);
+  setPg("pr", p.padding.right);
+  setPg("pt", p.padding.top);
+  setPg("pb", p.padding.bottom);
   syncRollFields();
 }
 
 // A roll has no length and no top or bottom edge, so those fields do not apply.
 function syncRollFields() {
-  const roll = $("pg-roll").checked;
-  $("pg-length").disabled = roll;
-  $("pg-mt").disabled = roll;
-  $("pg-mb").disabled = roll;
+  const roll = pgFields("roll")[0].checked;
+  for (const name of ["length", "mt", "mb"]) pgFields(name).forEach((el) => (el.disabled = roll));
   $("pg-fit").disabled = !roll;
 }
 
 function readPresetForm() {
-  const num = (id) => Math.max(0, Number($(id).value) || 0);
-  const roll = $("pg-roll").checked;
+  const num = (name) => Math.max(0, Number(pgFields(name)[0].value) || 0);
+  const roll = pgFields("roll")[0].checked;
   return {
-    name: $("pg-name").value.trim() || "Untitled",
-    widthMm: Math.max(10, num("pg-width")),
-    lengthMm: roll ? null : Math.max(10, num("pg-length")),
-    margins: { left: num("pg-ml"), right: num("pg-mr"), top: roll ? 0 : num("pg-mt"), bottom: roll ? 0 : num("pg-mb") },
-    padding: { left: num("pg-pl"), right: num("pg-pr"), top: num("pg-pt"), bottom: num("pg-pb") },
+    name: pgFields("name")[0].value.trim() || "Untitled",
+    widthMm: Math.max(10, num("width")),
+    lengthMm: roll ? null : Math.max(10, num("length")),
+    margins: { left: num("ml"), right: num("mr"), top: roll ? 0 : num("mt"), bottom: roll ? 0 : num("mb") },
+    padding: { left: num("pl"), right: num("pr"), top: num("pt"), bottom: num("pb") },
   };
 }
 
@@ -390,15 +400,19 @@ function bindPresets() {
   $("pg-preset").addEventListener("change", (e) => applyPreset(e.target.value));
 
   // Edits change the current page size straight away.
-  const fields = ["pg-name", "pg-width", "pg-length", "pg-ml", "pg-mt", "pg-mr", "pg-mb", "pg-pl", "pg-pt", "pg-pr", "pg-pb"];
-  const commit = () => {
-    syncRollFields();
-    Object.assign(preset(), readPresetForm());
-    persistPresets();
-    applyPreset(state.presetId);
-  };
-  for (const id of fields) $(id).addEventListener("change", commit);
-  $("pg-roll").addEventListener("change", commit);
+  for (const el of document.querySelectorAll("[data-pg]")) {
+    el.addEventListener("change", () => {
+      for (const other of pgFields(el.dataset.pg)) {
+        if (other === el) continue;
+        if (el.type === "checkbox") other.checked = el.checked;
+        else other.value = el.value;
+      }
+      syncRollFields();
+      Object.assign(preset(), readPresetForm());
+      persistPresets();
+      applyPreset(state.presetId);
+    });
+  }
 
   $("pg-new").addEventListener("click", () => {
     const form = readPresetForm();
