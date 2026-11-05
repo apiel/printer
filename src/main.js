@@ -1,10 +1,10 @@
 import { FONTS, SIZES, matchFont } from "./fonts.js";
 import { connect, send, onLog, onChange as onBleChange, isConnected, printerName } from "./ble.js";
-import { init, feed, concat, rasterCommand } from "./escpos.js";
+import { init, feed, density, concat, rasterCommand } from "./escpos.js";
 import { mmToDots, dotsToMm, newId, ROLL_MIN_MM } from "./units.js";
 import { DEFAULT_PRESETS, loadPresets, savePresets, pageLengthMm, pageWidthDots } from "./presets.js";
 import { loadDoc, saveDoc } from "./storage.js";
-import { toPrintBitmap, addMargins, fileToCanvas, canvasToJpeg } from "./bitmap.js";
+import { toPrintBitmap, addMargins, toBlackWhite, newCanvas, fileToCanvas, canvasToJpeg } from "./bitmap.js";
 import { renderPage } from "./render.js";
 import { createRichText } from "./richtext.js";
 import { createPages } from "./pages.js";
@@ -312,6 +312,16 @@ function bindToolbar() {
   $("add-image").addEventListener("click", () => $("file-image").click());
   $("import-pdf").addEventListener("click", () => $("file-pdf").click());
   $("add-page").addEventListener("click", () => pages.addPage());
+  $("test-print").addEventListener("click", guard(async () => {
+    state.busy = true;
+    refreshAction();
+    try {
+      await printTestStrip();
+    } finally {
+      state.busy = false;
+      refreshAction();
+    }
+  }));
   $("delete-item").addEventListener("click", () => pages.deleteSelected());
   $("clear-all").addEventListener("click", guard(clearAll));
 
@@ -358,12 +368,25 @@ function refreshAction() {
   button.title = connected ? "Print" : "Connect to the printer";
   button.disabled = state.busy;
   $("printer-status").textContent = connected ? `Connected: ${printerName() || "printer"}` : "Not connected";
+  $("test-print").disabled = !connected || state.busy;
 }
 
 // Blank space (dots) printed around each page: printing starts this far in.
 function printMargins() {
   const m = preset().margins;
   return { left: mmToDots(m.left), top: mmToDots(m.top), right: mmToDots(m.right), bottom: mmToDots(m.bottom) };
+}
+
+// Send one page to the printer: the page with its margins around it, using this page size's
+// density, followed by its feed. Returns the bitmap that was sent.
+async function sendPage(pageCanvas) {
+  const p = preset();
+  const canvas = addMargins(pageCanvas, printMargins());
+  const parts = [init()]; // a reset first: it would undo a density set before it
+  if (p.density) parts.push(density(p.density));
+  parts.push(rasterCommand(toPrintBitmap(canvas)), feed(p.feed ?? 3));
+  await send(concat(...parts));
+  return canvas;
 }
 
 // Every page is printed at its own width plus its margins, so match them to your paper.
@@ -374,11 +397,46 @@ async function printDocument() {
 
   const elements = pages.pageElements();
   for (let i = 0; i < elements.length; i++) {
-    const page = await renderPage(elements[i]);
-    const canvas = addMargins(page, printMargins());
-    await send(concat(init(), rasterCommand(toPrintBitmap(canvas)), feed(3)));
+    const canvas = await sendPage(await renderPage(elements[i]));
     log(`Printed page ${i + 1} of ${elements.length} (${canvas.width} × ${canvas.height} dots, with margins).`);
   }
+}
+
+// A small strip with solid black, shades of grey and fine lines, as wide as the page, to judge
+// the density on the actual paper.
+async function printTestStrip() {
+  if (!isConnected()) throw new Error("Connect to the printer first.");
+  const p = preset();
+  const width = pageWidthDots(p);
+  const bar = 28;
+  const gap = 6;
+  const canvas = newCanvas(width, 56 + 5 * (bar + gap) + 20 + gap);
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#000";
+  ctx.font = "bold 22px monospace";
+  ctx.textBaseline = "top";
+  ctx.fillText(`Density ${p.density || "default"}`, 4, 6);
+  ctx.font = "14px monospace";
+  ctx.fillText(`${p.name}, ${width} dots`, 4, 32);
+
+  let y = 56;
+  for (const black of [0.2, 0.4, 0.6, 0.8]) { // shades of grey, dithered like a picture
+    const grey = newCanvas(width, bar);
+    const g = grey.getContext("2d");
+    const v = Math.round(255 * (1 - black));
+    g.fillStyle = `rgb(${v},${v},${v})`;
+    g.fillRect(0, 0, width, bar);
+    ctx.drawImage(toBlackWhite(grey, true), 0, y);
+    y += bar + gap;
+  }
+  ctx.fillRect(0, y, width, bar); // solid black
+  y += bar + gap;
+  for (let x = 0; x < width; x += 2) ctx.fillRect(x, y, 1, 20); // one-dot lines
+
+  const sent = await sendPage(canvas);
+  log(`Printed a test strip (${sent.width} × ${sent.height} dots, density ${p.density || "default"}).`);
 }
 
 // ---- page sizes (the toolbox shown when nothing is selected) ----------------
@@ -411,6 +469,8 @@ function fillPresetForm(p) {
   setPg("pr", p.padding.right);
   setPg("pt", p.padding.top);
   setPg("pb", p.padding.bottom);
+  setPg("density", p.density ?? 0);
+  setPg("feed", p.feed ?? 3);
   syncRollFields();
 }
 
@@ -430,6 +490,8 @@ function readPresetForm() {
     lengthMm: roll ? null : Math.max(1, num("length")),
     margins: { left: num("ml"), right: num("mr"), top: roll ? 0 : num("mt"), bottom: roll ? 0 : num("mb") },
     padding: { left: num("pl"), right: num("pr"), top: num("pt"), bottom: num("pb") },
+    density: Math.min(5, Math.round(num("density"))),
+    feed: Math.min(50, Math.round(num("feed"))),
   };
 }
 

@@ -45,7 +45,7 @@ npm run build    # static site in dist/
   dithered to black and white at the size and orientation they are shown. Images can also be pasted or dropped.
 - **PDF**: each page becomes an image: stacked on a roll, one per page on a fixed size.
 - **Menu** (top left): every page size value (name, save as new, delete, width, roll, length, margins,
-  padding, fit roll to its content, reset to the defaults), printer status, and the log.
+  padding, fit roll to its content, density, feed, reset to the defaults), a test strip, printer status, and the log.
 - The document and the page sizes are saved automatically in this browser (local storage).
 
 ### Page sizes
@@ -54,6 +54,12 @@ npm run build    # static site in dist/
 printed around the page, so printing starts that far in: with a width of 210 and a left margin of 10,
 the first dot of the page is printed 10 mm from the edge, and the print is 210 + margins wide. Margins
 are not shown on screen. **Padding** is the space new items keep from the page edge (the faint dashed line).
+
+**Density and feed** are part of the page size, so each paper can have its own. Density (1 lightest to
+5 darkest, or the printer's own setting) is sent as the heating time (`ESC 7`), and a darker print is slower.
+Feed is how many blank lines come out after each page. Use **Print a test strip** in the menu to compare
+levels on the actual paper. If your printer uses a different command for density, it lives in one place:
+`density()` in `src/escpos.js`.
 
 **The page follows its content.** After anything is added, moved, resized, edited or deleted, the page
 becomes as long as its content needs: empty space under it goes, and it grows to include anything moved

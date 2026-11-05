@@ -15,7 +15,15 @@ export function concat(...parts) {
 }
 
 export const init = () => [ESC, 0x40];
-export const feed = (n) => [ESC, 0x64, n];
+export const feed = (n) => [ESC, 0x64, Math.max(0, Math.min(255, Math.round(n)))];
+
+// Print density (how dark). Many thermal printers take it as the heating time: ESC 7 n1 n2 n3,
+// with n1 = most heating dots at once, n2 = heating time (longer = darker, but slower) and
+// n3 = heating interval. Levels 1 to 5 go around the usual default time of 80. If your printer
+// uses a different command for density, this is the one place to change.
+export const DENSITY_LEVELS = 5;
+const HEAT_TIME = [50, 65, 80, 110, 150];
+export const density = (level) => [ESC, 0x37, 7, HEAT_TIME[Math.max(1, Math.min(DENSITY_LEVELS, level)) - 1], 2];
 
 /**
  * Pack a black and white canvas into a GS v 0 raster command.

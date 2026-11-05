@@ -115,6 +115,21 @@
         </div>
       </div>
       <div class="row"><button id="pg-fit"><span data-icon="fitHeight"></span>Fit roll to its content</button></div>
+      <div class="field"><label for="pg-density">Density</label>
+        <select id="pg-density" data-pg="density" title="How dark to print on this paper">
+          <option value="0">Printer default</option>
+          <option value="1">1 (lightest)</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5 (darkest)</option>
+        </select>
+      </div>
+      <div class="field"><label for="pg-feed">Feed after page</label><input id="pg-feed" data-pg="feed" type="number" min="0" max="50" step="1" title="Blank lines fed after each page"></div>
+      <div class="row"><button id="test-print" disabled><span data-icon="printer"></span>Print a test strip</button></div>
+      <p class="muted">Density and feed belong to this page size, so each paper can have its own. Density is sent
+        as the printer's heating time (a darker print is slower); "Printer default" sends nothing. Print the
+        test strip on the paper to compare levels.</p>
       <p class="muted"><b>Margins</b> are blank space printed around the page, so printing starts that far in:
         with a width of 210 and a left margin of 10, the first dot of the page is printed 10 mm from the edge
         (they are not shown on screen). <b>Padding</b> is the space new items keep from the page edge

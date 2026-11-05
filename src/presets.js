@@ -3,6 +3,8 @@
 //   margins             blank space added around the page when printing: the first dot of
 //                       the page is printed this far in. Not shown on screen.
 //   padding             space new items keep from the page edge (the dashed line)
+//   density             how dark to print: 0 = the printer's own setting, 1 to 5 = lightest to darkest
+//   feed                blank lines fed after each page
 // So width 210 with a 10 mm left margin prints 10 mm of blank, then the 210 mm page.
 
 import { mmToDots } from "./units.js";
@@ -16,10 +18,10 @@ export const pageLengthMm = (p) => p.lengthMm || null;
 const box = (top, right, bottom, left) => ({ top, right, bottom, left });
 
 export const DEFAULT_PRESETS = [
-  { id: "roll58", name: "58 mm roll", widthMm: 48, lengthMm: null, margins: box(0, 0, 0, 0), padding: box(2, 1, 2, 2) },
-  { id: "roll80", name: "80 mm roll", widthMm: 72, lengthMm: null, margins: box(0, 0, 0, 0), padding: box(2, 1, 2, 2) },
-  { id: "a4", name: "A4 page", widthMm: 210, lengthMm: 297, margins: box(0, 0, 0, 0), padding: box(5, 5, 5, 5) },
-  { id: "label", name: "Label 50 × 30", widthMm: 50, lengthMm: 30, margins: box(0, 0, 0, 0), padding: box(1, 1, 1, 1) },
+  { id: "roll58", name: "58 mm roll", widthMm: 48, lengthMm: null, margins: box(0, 0, 0, 0), padding: box(2, 1, 2, 2), density: 0, feed: 3 },
+  { id: "roll80", name: "80 mm roll", widthMm: 72, lengthMm: null, margins: box(0, 0, 0, 0), padding: box(2, 1, 2, 2), density: 0, feed: 3 },
+  { id: "a4", name: "A4 page", widthMm: 210, lengthMm: 297, margins: box(0, 0, 0, 0), padding: box(5, 5, 5, 5), density: 0, feed: 3 },
+  { id: "label", name: "Label 50 × 30", widthMm: 50, lengthMm: 30, margins: box(0, 0, 0, 0), padding: box(1, 1, 1, 1), density: 0, feed: 3 },
 ];
 
 // Presets saved by earlier versions: first ones without padding (their "margins" were
@@ -46,11 +48,14 @@ const read = (key) => {
   }
 };
 
+// Page sizes saved before density and feed existed get the defaults.
+const withPrintSettings = (p) => ({ density: 0, feed: 3, ...p });
+
 export function loadPresets() {
   const current = read(KEY);
-  if (current) return current;
+  if (current) return current.map(withPrintSettings);
   const old = read(V1_KEY);
-  if (old) return old.map(fromOld);
+  if (old) return old.map(fromOld).map(withPrintSettings);
   return structuredClone(DEFAULT_PRESETS);
 }
 
