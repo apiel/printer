@@ -336,6 +336,17 @@ function bindToolbar() {
     if (file) await importPdf(file);
   }));
 
+  // Ctrl+V: paste an image or a PDF from the clipboard.
+  document.addEventListener("paste", guard(async (e) => {
+    const files = [...(e.clipboardData?.files || [])];
+    const pdf = files.find((f) => f.type === "application/pdf");
+    const images = files.filter((f) => f.type.startsWith("image/"));
+    if (!pdf && !images.length) return; // plain text paste: leave it alone
+    e.preventDefault();
+    if (pdf) await importPdf(pdf);
+    else for (const f of images) await addImageFile(f);
+  }));
+
   $("action").addEventListener("click", guard(async () => {
     if (state.busy) return;
     state.busy = true;
